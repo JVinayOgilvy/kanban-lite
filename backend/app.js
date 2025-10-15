@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const authRoutes = require('./routes/authRoutes'); // Import auth routes
+const boardRoutes = require('./routes/boardRoutes');
 
 const app = express();
 
@@ -11,6 +12,7 @@ app.use(express.urlencoded({ extended: false })); // Body parser for URL-encoded
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/boards', boardRoutes);
 
 // Basic route for testing server
 app.get('/', (req, res) => {
