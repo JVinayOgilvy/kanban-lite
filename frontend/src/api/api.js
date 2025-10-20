@@ -12,4 +12,13 @@ API.interceptors.request.use((req) => {
     return req;
 });
 
+// --- Start Board API functions ---
+export const fetchBoards = () => API.get('/boards');
+export const createBoard = (newBoard) => API.post('/boards', newBoard);
+export const getBoard = (id) => API.get(`/boards/${id}`);
+export const updateBoard = (id, updatedBoard) => API.put(`/boards/${id}`, updatedBoard);
+export const deleteBoard = (id) => API.delete(`/boards/${id}`);
+export const addBoardMember = (id, memberEmail) => API.put(`/boards/${id}/members`, { email: memberEmail });
+// --- END Board API functions ---
+
 export default API;

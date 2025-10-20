@@ -3,7 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage'; // Our placeholder dashboard
+import DashboardPage from './pages/DashboardPage';
+import BoardDetailPage from './pages/BoardDetailPage';
 
 // A simple PrivateRoute component
 const PrivateRoute = ({ children }) => {
@@ -28,6 +29,14 @@ function App() {
             element={
               <PrivateRoute>
                 <DashboardPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/board/:id"
+            element={
+              <PrivateRoute>
+                <BoardDetailPage />
               </PrivateRoute>
             }
           />
