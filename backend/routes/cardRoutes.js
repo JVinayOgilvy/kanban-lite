@@ -1,0 +1,24 @@
+const express = require('express');
+const {
+    getCards,
+    getCardById,
+    createCard,
+    updateCard,
+    deleteCard,
+} = require('../controllers/cardController');
+const { protect } = require('../middleware/authMiddleware');
+
+const router = express.Router();
+
+// Routes for cards within a specific list
+router.route('/lists/:listId/cards')
+    .get(protect, getCards)
+    .post(protect, createCard);
+
+// Routes for individual cards
+router.route('/cards/:id')
+    .get(protect, getCardById)
+    .put(protect, updateCard)
+    .delete(protect, deleteCard);
+
+module.exports = router;
