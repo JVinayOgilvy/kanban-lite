@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, addBoardMember, fetchLists, createList, fetchCards } from '../api/api'; // Import new API functions
+import { getBoard, addBoardMember, fetchLists, createList, fetchCards, updateCard } from '../api/api'; // Import updateCard
 import { useAuth } from '../context/AuthContext';
-import ListColumn from '../components/ListColumn'; // Import ListColumn component
+import ListColumn from '../components/ListColumn';
+import { DragDropContext } from 'react-beautiful-dnd'; // <-- Import DragDropContext
 
 const BoardDetailPage = () => {
     const { id } = useParams();
@@ -18,23 +19,19 @@ const BoardDetailPage = () => {
     const [newListName, setNewListName] = useState('');
     const [createListError, setCreateListError] = useState('');
 
-    // Function to fetch all board data (board, lists, and cards for each list)
     const fetchAllBoardData = useCallback(async () => {
         try {
             setLoading(true);
             setError('');
-            setCreateListError(''); // Clear list creation error
+            setCreateListError('');
 
-            // 1. Fetch board details
             const boardRes = await getBoard(id);
             setBoard(boardRes.data);
 
-            // 2. Fetch lists for the board
             const listsRes = await fetchLists(id);
             const fetchedLists = listsRes.data;
             setLists(fetchedLists);
 
-            // 3. Fetch cards for each list concurrently
             const cardsPromises = fetchedLists.map(list => fetchCards(list._id));
             const cardsResponses = await Promise.all(cardsPromises);
 
@@ -50,13 +47,13 @@ const BoardDetailPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [id]); // Dependency on 'id'
+    }, [id]);
 
     useEffect(() => {
-        if (user) { // Only fetch if user is logged in
+        if (user) {
             fetchAllBoardData();
         }
-    }, [user, fetchAllBoardData]); // Re-fetch if user or fetchAllBoardData changes
+    }, [user, fetchAllBoardData]);
 
     const handleInviteMember = async (e) => {
         e.preventDefault();
@@ -71,8 +68,6 @@ const BoardDetailPage = () => {
             await addBoardMember(id, newMemberEmail);
             setNewMemberEmail('');
             setAddMemberSuccess('Member invited successfully!');
-            // Re-fetch board details to update the members list
-            // We only need to update the board object, not all lists/cards
             const boardRes = await getBoard(id);
             setBoard(boardRes.data);
         } catch (err) {
@@ -91,8 +86,8 @@ const BoardDetailPage = () => {
 
         try {
             const { data } = await createList(id, { title: newListName });
-            setLists([...lists, data]); // Add new list to state
-            setCards({ ...cards, [data._id]: [] }); // Initialize an empty array for new list's cards
+            setLists([...lists, data]);
+            setCards(prevCards => ({ ...prevCards, [data._id]: [] })); // Initialize an empty array for new list's cards
             setNewListName('');
         } catch (err) {
             console.error('Failed to create list:', err);
@@ -101,12 +96,77 @@ const BoardDetailPage = () => {
     };
 
     const handleCardCreated = (newCard) => {
-        // Update the cards state for the specific list
         setCards(prevCards => ({
             ...prevCards,
             [newCard.list]: [...(prevCards[newCard.list] || []), newCard].sort((a, b) => a.order - b.order)
         }));
     };
+
+    // --- NEW: onDragEnd handler for react-beautiful-dnd ---
+    const onDragEnd = async (result) => {
+        const { destination, source, draggableId } = result;
+
+        // 1. Dropped outside a droppable area
+        if (!destination) {
+            return;
+        }
+
+        // 2. Dropped in the same place (same list, same index)
+        if (
+            destination.droppableId === source.droppableId &&
+            destination.index === source.index
+        ) {
+            return;
+        }
+
+        // Find the card that was dragged
+        const draggedCard = cards[source.droppableId].find(card => card._id === draggableId);
+        if (!draggedCard) return;
+
+        // Optimistically update the UI
+        const newCardsState = { ...cards };
+
+        // Remove from old list
+        const sourceListCards = Array.from(newCardsState[source.droppableId]);
+        sourceListCards.splice(source.index, 1);
+        newCardsState[source.droppableId] = sourceListCards;
+
+        // Add to new list (or same list if reordering)
+        const destinationListCards = Array.from(newCardsState[destination.droppableId] || []); // Handle if destination list was empty
+        destinationListCards.splice(destination.index, 0, { ...draggedCard, list: destination.droppableId }); // Update list ID in card object
+        newCardsState[destination.droppableId] = destinationListCards;
+
+        // Update local state immediately for smooth UI
+        setCards(newCardsState);
+
+        // 3. Update backend with new position/list
+        try {
+            const updatedCardData = {
+                listId: destination.droppableId, // New list ID
+                order: destination.index,        // New order
+            };
+            await updateCard(draggableId, updatedCardData);
+
+            // Re-fetch all cards for both affected lists to ensure correct order/state from backend
+            // This is a robust way to handle potential backend reordering logic
+            const updatedSourceListCards = await fetchCards(source.droppableId);
+            const updatedDestinationListCards = await fetchCards(destination.droppableId);
+
+            setCards(prevCards => ({
+                ...prevCards,
+                [source.droppableId]: updatedSourceListCards.data,
+                [destination.droppableId]: updatedDestinationListCards.data,
+            }));
+
+        } catch (err) {
+            console.error('Failed to update card position on backend:', err);
+            setError('Failed to update card position. Please refresh.');
+            // Revert UI changes if backend update fails (optional, but good for robustness)
+            // For simplicity in POC, we'll just show an error and ask to refresh.
+            // A more complex solution would involve storing the original state and reverting.
+        }
+    };
+    // --- END NEW: onDragEnd handler ---
 
     if (loading) {
         return <p style={styles.loading}>Loading board details...</p>;
@@ -177,30 +237,33 @@ const BoardDetailPage = () => {
                 </div>
             )}
 
-            <div style={styles.listsContainer}>
-                {lists.sort((a, b) => a.order - b.order).map((list) => (
-                    <ListColumn
-                        key={list._id}
-                        list={list}
-                        cards={cards[list._id] || []} // Pass cards for this specific list
-                        onCardCreated={handleCardCreated}
-                    />
-                ))}
-                <div style={styles.addListSection}>
-                    <form onSubmit={handleCreateList} style={styles.addListForm}>
-                        <input
-                            type="text"
-                            placeholder="Add a new list..."
-                            value={newListName}
-                            onChange={(e) => setNewListName(e.target.value)}
-                            style={styles.addListInput}
-                            required
+            {/* 1. Wrap the entire draggable area with DragDropContext */}
+            <DragDropContext onDragEnd={onDragEnd}>
+                <div style={styles.listsContainer}>
+                    {lists.sort((a, b) => a.order - b.order).map((list) => (
+                        <ListColumn
+                            key={list._id}
+                            list={list}
+                            cards={cards[list._id] || []}
+                            onCardCreated={handleCardCreated}
                         />
-                        <button type="submit" style={styles.addListButton}>Add List</button>
-                        {createListError && <p style={styles.error}>{createListError}</p>}
-                    </form>
+                    ))}
+                    <div style={styles.addListSection}>
+                        <form onSubmit={handleCreateList} style={styles.addListForm}>
+                            <input
+                                type="text"
+                                placeholder="Add a new list..."
+                                value={newListName}
+                                onChange={(e) => setNewListName(e.target.value)}
+                                style={styles.addListInput}
+                                required
+                            />
+                            <button type="submit" style={styles.addListButton}>Add List</button>
+                            {createListError && <p style={styles.error}>{createListError}</p>}
+                        </form>
+                    </div>
                 </div>
-            </div>
+            </DragDropContext>
         </div>
     );
 };
@@ -210,9 +273,9 @@ const styles = {
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
-        backgroundColor: '#0079bf', // Trello-like blue background
+        backgroundColor: '#0079bf',
         padding: '20px',
-        overflowX: 'auto', // Allow horizontal scrolling for many lists
+        overflowX: 'auto',
     },
     boardHeader: {
         display: 'flex',
@@ -342,8 +405,8 @@ const styles = {
     listsContainer: {
         display: 'flex',
         flexGrow: 1,
-        alignItems: 'flex-start', // Align lists to the top
-        paddingBottom: '10px', // Space for horizontal scrollbar
+        alignItems: 'flex-start',
+        paddingBottom: '10px',
     },
     addListSection: {
         backgroundColor: 'rgba(255,255,255,0.1)',
