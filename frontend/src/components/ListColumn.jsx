@@ -4,6 +4,7 @@ import { createCard } from '../api/api';
 import { Droppable } from 'react-beautiful-dnd'; // <-- Import Droppable
 
 const ListColumn = ({ list, cards, onCardCreated }) => {
+    console.log('Rendering ListColumn from Components for list:', list, 'with cards:', cards);
     const [newCardTitle, setNewCardTitle] = useState('');
     const [error, setError] = useState('');
 

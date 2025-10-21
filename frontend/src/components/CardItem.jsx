@@ -2,7 +2,7 @@ import React from 'react';
 import { Draggable } from 'react-beautiful-dnd'; // <-- Import Draggable
 
 const CardItem = ({ card, index }) => { // <-- Receive 'index' prop
-    console.log('Rendering CardItem for card:', card);
+    console.log('Rendering CardItem from Components for card:', card);
     const dueDate = card.dueDate ? new Date(card.dueDate).toLocaleDateString() : 'No due date';
 
     return (
