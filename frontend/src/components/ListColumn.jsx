@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import CardItem from './CardItem';
-import { createCard } from '../api/api'; // Import createCard API function
+import { createCard } from '../api/api';
+import { Droppable } from 'react-beautiful-dnd'; // <-- Import Droppable
 
 const ListColumn = ({ list, cards, onCardCreated }) => {
-    console.log('Rendering ListColumn for list:', list, 'with cards:', cards);
+    console.log('Rendering ListColumn from Components for list:', list, 'with cards:', cards);
     const [newCardTitle, setNewCardTitle] = useState('');
     const [error, setError] = useState('');
 
@@ -19,7 +20,7 @@ const ListColumn = ({ list, cards, onCardCreated }) => {
             const { data } = await createCard(list._id, { title: newCardTitle });
             setNewCardTitle('');
             if (onCardCreated) {
-                onCardCreated(data); // Notify parent component about the new card
+                onCardCreated(data);
             }
         } catch (err) {
             console.error('Failed to create card:', err);
@@ -30,15 +31,28 @@ const ListColumn = ({ list, cards, onCardCreated }) => {
     return (
         <div style={styles.listColumn}>
             <h3 style={styles.listTitle}>{list.title}</h3>
-            <div style={styles.cardsContainer}>
-                {cards.length === 0 ? (
-                    <p style={styles.noCardsMessage}>No cards in this list.</p>
-                ) : (
-                    cards.map((card) => (
-                        <CardItem key={card._id} card={card} />
-                    ))
+            {/* 1. Wrap with Droppable */}
+            <Droppable droppableId={list._id}>
+                {(provided, snapshot) => ( // 2. Render prop pattern
+                    <div
+                        ref={provided.innerRef} // 3. Attach innerRef
+                        {...provided.droppableProps} // 4. Attach droppableProps
+                        style={{
+                            ...styles.cardsContainer,
+                            ...(snapshot.isDraggingOver ? styles.cardsContainerDraggingOver : {}), // 5. Apply dragging over styles
+                        }}
+                    >
+                        {cards.length === 0 ? (
+                            <p style={styles.noCardsMessage}>No cards in this list.</p>
+                        ) : (
+                            cards.map((card, index) => ( // 6. Pass 'index' to CardItem
+                                <CardItem key={card._id} card={card} index={index} />
+                            ))
+                        )}
+                        {provided.placeholder} {/* 7. Placeholder for draggable item */}
+                    </div>
                 )}
-            </div>
+            </Droppable>
             <form onSubmit={handleCreateCard} style={styles.addCardForm}>
                 <input
                     type="text"
@@ -65,8 +79,8 @@ const styles = {
         margin: '0 10px',
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: 'calc(100vh - 150px)', // Adjust based on header/footer height
-        overflowY: 'auto', // Enable scrolling for long lists
+        maxHeight: 'calc(100vh - 150px)',
+        overflowY: 'auto',
     },
     listTitle: {
         fontSize: '1.2em',
@@ -77,8 +91,12 @@ const styles = {
     },
     cardsContainer: {
         flexGrow: 1,
-        minHeight: '50px', // Ensure container has some height even if empty
+        minHeight: '50px',
         padding: '0 5px',
+        transition: 'background-color 0.2s ease-in-out',
+    },
+    cardsContainerDraggingOver: { // NEW: Style for when a draggable item is over this droppable area
+        backgroundColor: '#cce0ff', // Light blue background
     },
     noCardsMessage: {
         fontSize: '0.9em',
@@ -91,7 +109,7 @@ const styles = {
         padding: '0 5px',
     },
     addCardInput: {
-        width: 'calc(100% - 22px)', // Account for padding/border
+        width: 'calc(100% - 22px)',
         padding: '10px',
         border: '1px solid #ccc',
         borderRadius: '4px',
