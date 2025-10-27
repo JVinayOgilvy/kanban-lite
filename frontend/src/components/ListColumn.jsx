@@ -1,12 +1,18 @@
 import React, { useState } from 'react';
 import CardItem from './CardItem';
 import { createCard } from '../api/api';
-import { Droppable } from 'react-beautiful-dnd'; // <-- Import Droppable
+import { useDroppable } from '@dnd-kit/core'; // <-- Import useDroppable
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'; // <-- Import SortableContext
 
 const ListColumn = ({ list, cards, onCardCreated }) => {
-    console.log('Rendering ListColumn from Components for list:', list, 'with cards:', cards);
+    console.log('Rendering ListColumn from components for list:', list, 'with cards:', cards);
     const [newCardTitle, setNewCardTitle] = useState('');
     const [error, setError] = useState('');
+
+    // 1. Use the useDroppable hook for the list itself
+    const { setNodeRef, isOver } = useDroppable({
+        id: list._id, // Use list._id as the unique ID for the droppable area
+    });
 
     const handleCreateCard = async (e) => {
         e.preventDefault();
@@ -31,28 +37,25 @@ const ListColumn = ({ list, cards, onCardCreated }) => {
     return (
         <div style={styles.listColumn}>
             <h3 style={styles.listTitle}>{list.title}</h3>
-            {/* 1. Wrap with Droppable */}
-            <Droppable droppableId={list._id}>
-                {(provided, snapshot) => ( // 2. Render prop pattern
-                    <div
-                        ref={provided.innerRef} // 3. Attach innerRef
-                        {...provided.droppableProps} // 4. Attach droppableProps
-                        style={{
-                            ...styles.cardsContainer,
-                            ...(snapshot.isDraggingOver ? styles.cardsContainerDraggingOver : {}), // 5. Apply dragging over styles
-                        }}
-                    >
-                        {cards.length === 0 ? (
-                            <p style={styles.noCardsMessage}>No cards in this list.</p>
-                        ) : (
-                            cards.map((card, index) => ( // 6. Pass 'index' to CardItem
-                                <CardItem key={card._id} card={card} index={index} />
-                            ))
-                        )}
-                        {provided.placeholder} {/* 7. Placeholder for draggable item */}
-                    </div>
-                )}
-            </Droppable>
+            {/* 2. Attach the ref to the droppable area */}
+            <div
+                ref={setNodeRef}
+                style={{
+                    ...styles.cardsContainer,
+                    ...(isOver ? styles.cardsContainerDraggingOver : {}), // Apply dragging over styles
+                }}
+            >
+                {/* 3. Wrap cards with SortableContext */}
+                <SortableContext items={cards.map(card => card._id)} strategy={verticalListSortingStrategy}>
+                    {cards.length === 0 ? (
+                        <p style={styles.noCardsMessage}>No cards in this list.</p>
+                    ) : (
+                        cards.map((card) => ( // No 'index' prop needed for CardItem here
+                            <CardItem key={card._id} card={card} />
+                        ))
+                    )}
+                </SortableContext>
+            </div>
             <form onSubmit={handleCreateCard} style={styles.addCardForm}>
                 <input
                     type="text"
@@ -95,8 +98,8 @@ const styles = {
         padding: '0 5px',
         transition: 'background-color 0.2s ease-in-out',
     },
-    cardsContainerDraggingOver: { // NEW: Style for when a draggable item is over this droppable area
-        backgroundColor: '#cce0ff', // Light blue background
+    cardsContainerDraggingOver: {
+        backgroundColor: '#cce0ff',
     },
     noCardsMessage: {
         fontSize: '0.9em',

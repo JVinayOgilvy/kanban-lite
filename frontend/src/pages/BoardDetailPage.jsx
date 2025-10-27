@@ -1,9 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, addBoardMember, fetchLists, createList, fetchCards, updateCard } from '../api/api'; // Import updateCard
+import { getBoard, addBoardMember, fetchLists, createList, fetchCards, updateCard } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import ListColumn from '../components/ListColumn';
-import { DragDropContext } from 'react-beautiful-dnd'; // <-- Import DragDropContext
+
+// dnd-kit imports
+import {
+    DndContext,
+    DragOverlay,
+    useSensor,
+    useSensors,
+    PointerSensor,
+    closestCorners, // A common collision detection algorithm
+} from '@dnd-kit/core';
+import { arrayMove } from '@dnd-kit/sortable';
+import { createPortal } from 'react-dom'; // For DragOverlay
+import CardItem from '../components/CardItem'; // Needed for DragOverlay
 
 const BoardDetailPage = () => {
     const { id } = useParams();
@@ -18,6 +30,33 @@ const BoardDetailPage = () => {
     const [addMemberSuccess, setAddMemberSuccess] = useState('');
     const [newListName, setNewListName] = useState('');
     const [createListError, setCreateListError] = useState('');
+
+    const [activeId, setActiveId] = useState(null); // State to track the currently dragged item's ID
+
+    // dnd-kit sensors configuration
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: {
+                distance: 8, // 8px minimum movement to start drag
+            },
+        })
+    );
+
+    // Helper to find which list an ID (card or list) belongs to
+    const findList = useCallback((itemId) => {
+        // Check if the itemId itself is a list ID
+        if (lists.some(list => list._id === itemId)) {
+            return itemId;
+        }
+        // Otherwise, assume it's a card ID and find its parent list
+        const listId = Object.keys(cards).find((key) =>
+            cards[key].some((card) => card._id === itemId)
+        );
+        return listId || null; // Return null if not found
+    }, [lists, cards]); // Dependencies for useCallback
+
+    // Helper to get the currently dragged card for DragOverlay
+    const activeCard = activeId ? Object.values(cards).flat().find(card => card._id === activeId) : null;
 
     const fetchAllBoardData = useCallback(async () => {
         try {
@@ -47,13 +86,13 @@ const BoardDetailPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [id]);
+    }, [id]); // Dependency on 'id'
 
     useEffect(() => {
-        if (user) {
+        if (user) { // Only fetch if user is logged in
             fetchAllBoardData();
         }
-    }, [user, fetchAllBoardData]);
+    }, [user, fetchAllBoardData]); // Re-fetch if user or fetchAllBoardData changes
 
     const handleInviteMember = async (e) => {
         e.preventDefault();
@@ -68,6 +107,7 @@ const BoardDetailPage = () => {
             await addBoardMember(id, newMemberEmail);
             setNewMemberEmail('');
             setAddMemberSuccess('Member invited successfully!');
+            // Re-fetch board details to update the members list
             const boardRes = await getBoard(id);
             setBoard(boardRes.data);
         } catch (err) {
@@ -102,71 +142,123 @@ const BoardDetailPage = () => {
         }));
     };
 
-    // --- NEW: onDragEnd handler for react-beautiful-dnd ---
-    const onDragEnd = async (result) => {
-        const { destination, source, draggableId } = result;
+    // dnd-kit event handlers
+    const onDragStart = (event) => {
+        setActiveId(event.active.id);
+    };
 
-        // 1. Dropped outside a droppable area
-        if (!destination) {
+    const onDragEnd = async (event) => {
+        const { active, over } = event;
+
+        if (!over) { // Dropped outside any droppable area
+            setActiveId(null);
             return;
         }
 
-        // 2. Dropped in the same place (same list, same index)
-        if (
-            destination.droppableId === source.droppableId &&
-            destination.index === source.index
-        ) {
+        const activeId = active.id;
+        const overId = over.id;
+
+        const activeListId = findList(activeId);
+        const overListId = findList(overId);
+
+        // Crucial check: Ensure both active and over IDs belong to valid lists
+        if (!activeListId || !overListId) {
+            console.warn("Drag operation involved an invalid list ID. ActiveListId:", activeListId, "OverListId:", overListId);
+            setActiveId(null);
             return;
         }
 
-        // Find the card that was dragged
-        const draggedCard = cards[source.droppableId].find(card => card._id === draggableId);
-        if (!draggedCard) return;
+        // Optimistic UI update
+        setCards((prevCards) => {
+            const newCardsState = { ...prevCards };
 
-        // Optimistically update the UI
-        const newCardsState = { ...cards };
+            // Ensure the lists exist in the state before trying to access them
+            if (!newCardsState[activeListId] || !newCardsState[overListId]) {
+                console.error("Attempted to access non-existent list in cards state during drag-end optimistic update.");
+                return prevCards; // Revert to previous state
+            }
 
-        // Remove from old list
-        const sourceListCards = Array.from(newCardsState[source.droppableId]);
-        sourceListCards.splice(source.index, 1);
-        newCardsState[source.droppableId] = sourceListCards;
+            // Make mutable copies of the card arrays for manipulation
+            const activeCards = Array.from(newCardsState[activeListId]);
+            const overCards = Array.from(newCardsState[overListId]);
 
-        // Add to new list (or same list if reordering)
-        const destinationListCards = Array.from(newCardsState[destination.droppableId] || []); // Handle if destination list was empty
-        destinationListCards.splice(destination.index, 0, { ...draggedCard, list: destination.droppableId }); // Update list ID in card object
-        newCardsState[destination.droppableId] = destinationListCards;
+            const activeIndex = activeCards.findIndex((card) => card._id === activeId);
+            // If the card isn't found in its supposed list, something is wrong with state.
+            if (activeIndex === -1) {
+                console.error("Dragged card not found in its active list during optimistic update.");
+                return prevCards;
+            }
 
-        // Update local state immediately for smooth UI
-        setCards(newCardsState);
+            // Determine the final index in the destination list
+            // If overId is a list ID (not a card ID), overIndex will be -1.
+            // In this case, we want to place the card at the end of the list.
+            const overIndex = overCards.findIndex((card) => card._id === overId);
+            const finalOverIndex = overIndex === -1 ? overCards.length : overIndex;
 
-        // 3. Update backend with new position/list
+            if (activeListId === overListId) {
+                // Moving within the same list
+                const newOrder = arrayMove(activeCards, activeIndex, finalOverIndex);
+                newCardsState[activeListId] = newOrder;
+            } else {
+                // Moving to a different list
+                const [movedCard] = activeCards.splice(activeIndex, 1); // This should now always find a card
+                if (!movedCard) { // Double-check, though activeIndex check above should prevent this
+                    console.error("Moved card was undefined after splice.");
+                    return prevCards;
+                }
+                movedCard.list = overListId; // Update the card's list ID
+                newCardsState[activeListId] = activeCards; // Update source list
+                overCards.splice(finalOverIndex, 0, movedCard); // Insert into destination list
+                newCardsState[overListId] = overCards; // Update destination list
+            }
+            return newCardsState;
+        });
+
+        // Backend update
         try {
-            const updatedCardData = {
-                listId: destination.droppableId, // New list ID
-                order: destination.index,        // New order
+            // Re-calculate indices and list IDs based on the final state after optimistic update
+            // This ensures we send the correct data to the backend.
+            const currentActiveListCards = cards[activeListId]; // Get the current state of the active list
+            const currentOverListCards = cards[overListId];     // Get the current state of the over list
+
+            const newActiveIndex = currentActiveListCards.findIndex((card) => card._id === activeId);
+            const newOverIndex = currentOverListCards.findIndex((card) => card._id === overId);
+            const finalBackendOrder = newOverIndex === -1 ? currentOverListCards.length : newOverIndex;
+
+            let updatedCardData = {
+                order: finalBackendOrder, // New order within the destination list
             };
-            await updateCard(draggableId, updatedCardData);
+
+            if (activeListId !== overListId) {
+                // Card moved to a different list
+                updatedCardData.listId = overListId;
+            }
+
+            await updateCard(activeId, updatedCardData);
 
             // Re-fetch all cards for both affected lists to ensure correct order/state from backend
             // This is a robust way to handle potential backend reordering logic
-            const updatedSourceListCards = await fetchCards(source.droppableId);
-            const updatedDestinationListCards = await fetchCards(destination.droppableId);
+            const updatedSourceListCards = await fetchCards(activeListId);
+            const updatedDestinationListCards = await fetchCards(overListId);
 
             setCards(prevCards => ({
                 ...prevCards,
-                [source.droppableId]: updatedSourceListCards.data,
-                [destination.droppableId]: updatedDestinationListCards.data,
+                [activeListId]: updatedSourceListCards.data,
+                [overListId]: updatedDestinationListCards.data,
             }));
 
         } catch (err) {
             console.error('Failed to update card position on backend:', err);
             setError('Failed to update card position. Please refresh.');
-            // Revert UI changes if backend update fails (optional, but good for robustness)
-            // For simplicity in POC, we'll just show an error and ask to refresh.
-            // A more complex solution would involve storing the original state and reverting.
+            // TODO: Implement a more robust UI revert mechanism here if needed for production
         }
+
+        setActiveId(null);
     };
-    // --- END NEW: onDragEnd handler ---
+
+    const onDragCancel = () => {
+        setActiveId(null);
+    };
 
     if (loading) {
         return <p style={styles.loading}>Loading board details...</p>;
@@ -237,8 +329,13 @@ const BoardDetailPage = () => {
                 </div>
             )}
 
-            {/* 1. Wrap the entire draggable area with DragDropContext */}
-            <DragDropContext onDragEnd={onDragEnd}>
+            <DndContext
+                sensors={sensors}
+                collisionDetection={closestCorners} // Use closestCorners for better sorting
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onDragCancel={onDragCancel}
+            >
                 <div style={styles.listsContainer}>
                     {lists.sort((a, b) => a.order - b.order).map((list) => (
                         <ListColumn
@@ -263,7 +360,15 @@ const BoardDetailPage = () => {
                         </form>
                     </div>
                 </div>
-            </DragDropContext>
+
+                {/* DragOverlay for custom visual feedback during drag */}
+                {createPortal(
+                    <DragOverlay>
+                        {activeCard ? <CardItem card={activeCard} /> : null}
+                    </DragOverlay>,
+                    document.body
+                )}
+            </DndContext>
         </div>
     );
 };
@@ -447,5 +552,4 @@ const styles = {
         backgroundColor: '#4a9a34',
     },
 };
-
 export default BoardDetailPage;
