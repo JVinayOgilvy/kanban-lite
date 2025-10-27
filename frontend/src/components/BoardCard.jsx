@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 
 const BoardCard = ({ board }) => {
+    console.log('Rendering BoardCard from Components for board:', board);
     return (
         <div style={styles.card}>
             <h3 style={styles.title}>{board.title}</h3>
