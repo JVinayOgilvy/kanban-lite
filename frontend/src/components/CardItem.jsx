@@ -1,33 +1,43 @@
 import React from 'react';
-import { Draggable } from 'react-beautiful-dnd'; // <-- Import Draggable
+import { useSortable } from '@dnd-kit/sortable'; // <-- Import useSortable
+import { CSS } from '@dnd-kit/utilities'; // <-- Import CSS utilities
 
-const CardItem = ({ card, index }) => { // <-- Receive 'index' prop
-    console.log('Rendering CardItem from Components for card:', card);
+const CardItem = ({ card }) => { 
+    console.log('Rendering CardItem from components for card:', card);
     const dueDate = card.dueDate ? new Date(card.dueDate).toLocaleDateString() : 'No due date';
 
+    // 1. Use the useSortable hook
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging, // dnd-kit provides this for styling
+    } = useSortable({ id: card._id }); // Use card._id as the unique ID
+
+    // 2. Apply transform and transition for smooth dragging
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        ...styles.card, // Merge with our base styles
+        ...(isDragging ? styles.cardDragging : {}), // Apply dragging styles
+    };
+
     return (
-        // 1. Wrap with Draggable
-        <Draggable draggableId={card._id} index={index}>
-            {(provided, snapshot) => ( // 2. Render prop pattern
-                <div
-                    ref={provided.innerRef} // 3. Attach innerRef
-                    {...provided.draggableProps} // 4. Attach draggableProps
-                    {...provided.dragHandleProps} // 5. Attach dragHandleProps
-                    style={{
-                        ...styles.card,
-                        ...(snapshot.isDragging ? styles.cardDragging : {}), // 6. Apply dragging styles
-                        ...provided.draggableProps.style, // 7. Apply dnd-specific styles
-                    }}
-                >
-                    <h4 style={styles.title}>{card.title}</h4>
-                    {card.description && <p style={styles.description}>{card.description}</p>}
-                    {card.assignedTo && (
-                        <p style={styles.assignedTo}>Assigned to: {card.assignedTo.name}</p>
-                    )}
-                    <p style={styles.dueDate}>Due: {dueDate}</p>
-                </div>
+        <div
+            ref={setNodeRef} // 3. Attach the ref
+            style={style}
+            {...attributes} // 4. Attach accessibility attributes
+            {...listeners} // 5. Attach event listeners for dragging
+        >
+            <h4 style={styles.title}>{card.title}</h4>
+            {card.description && <p style={styles.description}>{card.description}</p>}
+            {card.assignedTo && (
+                <p style={styles.assignedTo}>Assigned to: {card.assignedTo.name}</p>
             )}
-        </Draggable>
+            <p style={styles.dueDate}>Due: {dueDate}</p>
+        </div>
     );
 };
 
@@ -41,11 +51,14 @@ const styles = {
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         cursor: 'grab',
         transition: 'background-color 0.2s ease-in-out',
+        position: 'relative', // Needed for transform to work correctly
+        zIndex: 0, // Default z-index
     },
-    cardDragging: { // NEW: Style for when a card is being dragged
-        backgroundColor: '#e0f7fa', // Light blue background
+    cardDragging: {
+        backgroundColor: '#e0f7fa',
         boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
-        transform: 'rotate(2deg)', // Slight rotation for visual feedback
+        transform: 'rotate(2deg)',
+        zIndex: 100, // Bring dragged card to front
     },
     title: {
         fontSize: '1em',
