@@ -4,9 +4,10 @@ import { createCard } from '../api/api';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
-// Add onCardClick prop
+// --- NEW: Import CSS Module ---
+import styles from '../assets/css/components/ListColumn.module.css';
+
 const ListColumn = ({ list, cards, onCardCreated, onCardClick }) => {
-    console.log('Rendering ListColumn from components for list:', list, 'with cards:', cards); // Can remove this debug log now
     const [newCardTitle, setNewCardTitle] = useState('');
     const [error, setError] = useState('');
 
@@ -35,108 +36,36 @@ const ListColumn = ({ list, cards, onCardCreated, onCardClick }) => {
     };
 
     return (
-        <div style={styles.listColumn}>
-            <h3 style={styles.listTitle}>{list.title}</h3>
+        <div className={styles.listColumn}>
+            <h3 className={styles.listTitle}>{list.title}</h3>
             <div
                 ref={setNodeRef}
-                style={{
-                    ...styles.cardsContainer,
-                    ...(isOver ? styles.cardsContainerDraggingOver : {}),
-                }}
+                className={`${styles.cardsContainer} ${isOver ? styles.cardsContainerDraggingOver : ''}`}
             >
                 <SortableContext items={cards.map(card => card._id)} strategy={verticalListSortingStrategy}>
                     {cards.length === 0 ? (
-                        <p style={styles.noCardsMessage}>No cards in this list.</p>
+                        <p className={styles.noCardsMessage}>No cards in this list.</p>
                     ) : (
                         cards.map((card) => (
-                            <CardItem key={card._id} card={card} onCardClick={onCardClick} /> /* <--- Pass onCardClick */ 
+                            <CardItem key={card._id} card={card} onCardClick={onCardClick} />
                         ))
-                )}
+                    )}
                 </SortableContext>
             </div>
-            <form onSubmit={handleCreateCard} style={styles.addCardForm}>
+            <form onSubmit={handleCreateCard} className={styles.addCardForm}>
                 <input
                     type="text"
                     placeholder="Add a new card..."
                     value={newCardTitle}
                     onChange={(e) => setNewCardTitle(e.target.value)}
-                    style={styles.addCardInput}
+                    className={styles.addCardInput}
                     required
                 />
-                <button type="submit" style={styles.addCardButton}>Add Card</button>
-                {error && <p style={styles.error}>{error}</p>}
+                <button type="submit" className={styles.addCardButton}>Add Card</button>
+                {error && <p className={styles.error}>{error}</p>}
             </form>
         </div>
     );
-};
-
-const styles = {
-    listColumn: {
-        backgroundColor: '#ebecf0',
-        borderRadius: '8px',
-        padding: '10px',
-        width: '300px',
-        minWidth: '300px',
-        margin: '0 10px',
-        display: 'flex',
-        flexDirection: 'column',
-        maxHeight: 'calc(100vh - 150px)',
-        overflowY: 'auto',
-    },
-    listTitle: {
-        fontSize: '1.2em',
-        fontWeight: 'bold',
-        marginBottom: '10px',
-        color: '#333',
-        padding: '0 5px',
-    },
-    cardsContainer: {
-        flexGrow: 1,
-        minHeight: '50px',
-        padding: '0 5px',
-        transition: 'background-color 0.2s ease-in-out',
-    },
-    cardsContainerDraggingOver: {
-        backgroundColor: '#cce0ff',
-    },
-    noCardsMessage: {
-        fontSize: '0.9em',
-        color: '#777',
-        textAlign: 'center',
-        marginTop: '20px',
-    },
-    addCardForm: {
-        marginTop: '10px',
-        padding: '0 5px',
-    },
-    addCardInput: {
-        width: 'calc(100% - 22px)',
-        padding: '10px',
-        border: '1px solid #ccc',
-        borderRadius: '4px',
-        marginBottom: '5px',
-        fontSize: '0.9em',
-    },
-    addCardButton: {
-        backgroundColor: '#5aac44',
-        color: 'white',
-        padding: '8px 12px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontSize: '0.9em',
-        width: '100%',
-        transition: 'background-color 0.2s ease-in-out',
-    },
-    addCardButtonHover: {
-        backgroundColor: '#4a9a34',
-    },
-    error: {
-        color: 'red',
-        fontSize: '0.8em',
-        marginTop: '5px',
-        textAlign: 'center',
-    },
 };
 
 export default ListColumn;
