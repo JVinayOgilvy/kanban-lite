@@ -1,0 +1,205 @@
+.boardPageContainer {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #0079bf;
+    padding: 20px;
+    overflow-x: auto;
+}
+
+.boardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.boardTitle {
+    color: white;
+    font-size: 2.5em;
+    margin: 0;
+}
+
+.backButton {
+    display: inline-block;
+    padding: 8px 15px;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.backButton:hover {
+    /* Add hover style */
+    background-color: rgba(255, 255, 255, 0.3);
+}
+
+.boardMeta {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    color: white;
+    font-size: 0.9em;
+}
+
+.membersSection {
+    margin-top: 10px;
+}
+
+.memberList {
+    list-style-type: none;
+    padding: 0;
+    margin: 5px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+}
+
+.memberItem {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ownerTag {
+    background-color: #f4d03f;
+    color: #333;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.75em;
+    font-weight: bold;
+}
+
+.inviteMemberSection {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    color: white;
+    text-align: center;
+}
+
+.subHeading {
+    color: white;
+    font-size: 1.2em;
+    margin-bottom: 10px;
+}
+
+.inviteForm {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+.inviteInput {
+    padding: 8px;
+    border: none;
+    border-radius: 4px;
+    width: 200px;
+}
+
+.inviteButton {
+    background-color: #5aac44;
+    color: white;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.inviteButton:hover {
+    /* Add hover style */
+    background-color: #4a9a34;
+}
+
+.error {
+    color: #ffdddd;
+    background-color: rgba(255, 0, 0, 0.3);
+    padding: 5px 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+    font-size: 0.9em;
+}
+
+.success {
+    color: #ddffdd;
+    background-color: rgba(0, 255, 0, 0.3);
+    padding: 5px 10px;
+    border-radius: 4px;
+    margin-top: 10px;
+    font-size: 0.9em;
+}
+
+.loading {
+    text-align: center;
+    margin-top: 50px;
+    font-size: 1.2em;
+    color: white;
+}
+
+.message {
+    text-align: center;
+    margin-top: 30px;
+    font-size: 1.1em;
+    color: white;
+}
+
+.listsContainer {
+    display: flex;
+    flex-grow: 1;
+    align-items: flex-start;
+    padding-bottom: 10px;
+}
+
+.addListSection {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px;
+    width: 300px;
+    min-width: 300px;
+    margin: 0 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.addListForm {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.addListInput {
+    padding: 10px;
+    border: none;
+    border-radius: 4px;
+    width: calc(100% - 20px);
+    font-size: 1em;
+}
+
+.addListButton {
+    background-color: #5aac44;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.addListButton:hover {
+    /* Add hover style */
+    background-color: #4a9a34;
+}

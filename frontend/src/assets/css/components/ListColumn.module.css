@@ -1,0 +1,77 @@
+.listColumn {
+    background-color: #ebecf0;
+    border-radius: 8px;
+    padding: 10px;
+    width: 300px;
+    min-width: 300px;
+    margin: 0 10px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+}
+
+.listTitle {
+    font-size: 1.2em;
+    font-weight: bold;
+    margin-bottom: 10px;
+    color: #333;
+    padding: 0 5px;
+}
+
+.cardsContainer {
+    flex-grow: 1;
+    min-height: 50px;
+    padding: 0 5px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.cardsContainerDraggingOver {
+    background-color: #cce0ff;
+}
+
+.noCardsMessage {
+    font-size: 0.9em;
+    color: #777;
+    text-align: center;
+    margin-top: 20px;
+}
+
+.addCardForm {
+    margin-top: 10px;
+    padding: 0 5px;
+}
+
+.addCardInput {
+    width: calc(100% - 22px);
+    /* Account for padding and border */
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+}
+
+.addCardButton {
+    background-color: #5aac44;
+    color: white;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    width: 100%;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.addCardButton:hover {
+    /* Add hover style */
+    background-color: #4a9a34;
+}
+
+.error {
+    color: red;
+    font-size: 0.8em;
+    margin-top: 5px;
+    text-align: center;
+}
