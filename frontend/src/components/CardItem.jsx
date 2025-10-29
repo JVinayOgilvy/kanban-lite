@@ -1,35 +1,35 @@
 import React from 'react';
-import { useSortable } from '@dnd-kit/sortable'; // <-- Import useSortable
-import { CSS } from '@dnd-kit/utilities'; // <-- Import CSS utilities
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
-const CardItem = ({ card }) => { 
-    console.log('Rendering CardItem from components for card:', card);
+// Add onCardClick prop
+const CardItem = ({ card, onCardClick }) => {
+     console.log('Rendering CardItem from components for card:', card); // Can remove this debug log now
     const dueDate = card.dueDate ? new Date(card.dueDate).toLocaleDateString() : 'No due date';
 
-    // 1. Use the useSortable hook
     const {
         attributes,
         listeners,
         setNodeRef,
         transform,
         transition,
-        isDragging, // dnd-kit provides this for styling
-    } = useSortable({ id: card._id }); // Use card._id as the unique ID
+        isDragging,
+    } = useSortable({ id: card._id });
 
-    // 2. Apply transform and transition for smooth dragging
     const style = {
         transform: CSS.Transform.toString(transform),
         transition,
-        ...styles.card, // Merge with our base styles
-        ...(isDragging ? styles.cardDragging : {}), // Apply dragging styles
+        ...styles.card,
+        ...(isDragging ? styles.cardDragging : {}),
     };
 
     return (
         <div
-            ref={setNodeRef} // 3. Attach the ref
+            ref={setNodeRef}
             style={style}
-            {...attributes} // 4. Attach accessibility attributes
-            {...listeners} // 5. Attach event listeners for dragging
+            {...attributes}
+            {...listeners}
+            onClick={() => onCardClick(card)} // <--- Add onClick handler
         >
             <h4 style={styles.title}>{card.title}</h4>
             {card.description && <p style={styles.description}>{card.description}</p>}
@@ -49,16 +49,16 @@ const styles = {
         padding: '12px',
         marginBottom: '8px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-        cursor: 'grab',
+        cursor: 'grab', // Keep grab cursor for dragging
         transition: 'background-color 0.2s ease-in-out',
-        position: 'relative', // Needed for transform to work correctly
-        zIndex: 0, // Default z-index
+        position: 'relative',
+        zIndex: 0,
     },
     cardDragging: {
         backgroundColor: '#e0f7fa',
         boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
         transform: 'rotate(2deg)',
-        zIndex: 100, // Bring dragged card to front
+        zIndex: 100,
     },
     title: {
         fontSize: '1em',

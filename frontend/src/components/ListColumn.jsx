@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import CardItem from './CardItem';
 import { createCard } from '../api/api';
-import { useDroppable } from '@dnd-kit/core'; // <-- Import useDroppable
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'; // <-- Import SortableContext
+import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 
-const ListColumn = ({ list, cards, onCardCreated }) => {
-    console.log('Rendering ListColumn from components for list:', list, 'with cards:', cards);
+// Add onCardClick prop
+const ListColumn = ({ list, cards, onCardCreated, onCardClick }) => {
+    console.log('Rendering ListColumn from components for list:', list, 'with cards:', cards); // Can remove this debug log now
     const [newCardTitle, setNewCardTitle] = useState('');
     const [error, setError] = useState('');
 
-    // 1. Use the useDroppable hook for the list itself
     const { setNodeRef, isOver } = useDroppable({
-        id: list._id, // Use list._id as the unique ID for the droppable area
+        id: list._id,
     });
 
     const handleCreateCard = async (e) => {
@@ -37,23 +37,21 @@ const ListColumn = ({ list, cards, onCardCreated }) => {
     return (
         <div style={styles.listColumn}>
             <h3 style={styles.listTitle}>{list.title}</h3>
-            {/* 2. Attach the ref to the droppable area */}
             <div
                 ref={setNodeRef}
                 style={{
                     ...styles.cardsContainer,
-                    ...(isOver ? styles.cardsContainerDraggingOver : {}), // Apply dragging over styles
+                    ...(isOver ? styles.cardsContainerDraggingOver : {}),
                 }}
             >
-                {/* 3. Wrap cards with SortableContext */}
                 <SortableContext items={cards.map(card => card._id)} strategy={verticalListSortingStrategy}>
                     {cards.length === 0 ? (
                         <p style={styles.noCardsMessage}>No cards in this list.</p>
                     ) : (
-                        cards.map((card) => ( // No 'index' prop needed for CardItem here
-                            <CardItem key={card._id} card={card} />
+                        cards.map((card) => (
+                            <CardItem key={card._id} card={card} onCardClick={onCardClick} /> /* <--- Pass onCardClick */ 
                         ))
-                    )}
+                )}
                 </SortableContext>
             </div>
             <form onSubmit={handleCreateCard} style={styles.addCardForm}>
