@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard } from '../api/api';
+import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard, updateCard } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import ListColumn from '../components/ListColumn';
+import CardDetailModal from '../components/CardDetailModal';
 
 // dnd-kit imports
 import {
@@ -11,21 +12,21 @@ import {
     useSensor,
     useSensors,
     PointerSensor,
-    closestCorners, // A common collision detection algorithm
+    closestCorners,
 } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
-import { createPortal } from 'react-dom'; // For DragOverlay
-import CardItem from '../components/CardItem'; // Needed for DragOverlay
+import { createPortal } from 'react-dom';
+import CardItem from '../components/CardItem';
 
 // Socket.IO client import
-import { io } from 'socket.io-client'; // <--- NEW IMPORT
+import { io } from 'socket.io-client';
 
 const BoardDetailPage = () => {
     const { id } = useParams();
     const { user } = useAuth();
     const [board, setBoard] = useState(null);
     const [lists, setLists] = useState([]);
-    const [cards, setCards] = useState({}); // Object to store cards, keyed by listId
+    const [cards, setCards] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [newMemberEmail, setNewMemberEmail] = useState('');
@@ -34,29 +35,28 @@ const BoardDetailPage = () => {
     const [newListName, setNewListName] = useState('');
     const [createListError, setCreateListError] = useState('');
 
-    const [activeId, setActiveId] = useState(null); // State to track the currently dragged item's ID
+    const [activeId, setActiveId] = useState(null);
+    const [selectedCard, setSelectedCard] = useState(null);
 
     // dnd-kit sensors configuration
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
-                distance: 8, // 8px minimum movement to start drag
+                distance: 8,
             },
         })
     );
 
     // Helper to find which list an ID (card or list) belongs to
     const findList = useCallback((itemId) => {
-        // Check if the itemId itself is a list ID
         if (lists.some(list => list._id === itemId)) {
             return itemId;
         }
-        // Otherwise, assume it's a card ID and find its parent list
         const listId = Object.keys(cards).find((key) =>
             cards[key].some((card) => card._id === itemId)
         );
-        return listId || null; // Return null if not found
-    }, [lists, cards]); // Dependencies for useCallback
+        return listId || null;
+    }, [lists, cards]);
 
     // Helper to get the currently dragged card for DragOverlay
     const activeCard = activeId ? Object.values(cards).flat().find(card => card._id === activeId) : null;
@@ -68,7 +68,7 @@ const BoardDetailPage = () => {
             setCreateListError('');
 
             const boardRes = await getBoard(id);
-            setBoard(boardRes.data);
+            setBoard(boardRes.data); // boardRes.data will contain populated members
 
             const listsRes = await fetchLists(id);
             const fetchedLists = listsRes.data;
@@ -89,27 +89,26 @@ const BoardDetailPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [id]); // Dependency on 'id'
+    }, [id]);
 
     useEffect(() => {
-        if (user) { // Only fetch if user is logged in
+        if (user) {
             fetchAllBoardData();
         }
-    }, [user, fetchAllBoardData]); // Re-fetch if user or fetchAllBoardData changes
+    }, [user, fetchAllBoardData]);
 
-    // --- NEW: Socket.IO Integration ---
+    // --- Socket.IO Integration ---
     useEffect(() => {
-        if (!id || !user) return; // Don't connect if board ID or user is not available
+        if (!id || !user) return;
 
-        // Construct the Socket.IO server URL (remove '/api' from the base URL)
         const socketUrl = import.meta.env.VITE_API_BASE_URL.replace('/api', '');
         const socket = io(socketUrl, {
-            withCredentials: true, // Important for sending cookies/auth headers if needed (though we use JWT)
+            withCredentials: true,
         });
 
         socket.on('connect', () => {
             console.log('Socket.IO connected:', socket.id);
-            socket.emit('joinBoard', id); // Join the specific board's room
+            socket.emit('joinBoard', id);
         });
 
         socket.on('disconnect', () => {
@@ -120,7 +119,6 @@ const BoardDetailPage = () => {
             console.log('Real-time: cardCreated', newCard);
             setCards(prevCards => {
                 const listCards = prevCards[newCard.list] || [];
-                // Check if card already exists to prevent duplicates from own action
                 if (listCards.some(card => card._id === newCard._id)) {
                     return prevCards;
                 }
@@ -136,17 +134,14 @@ const BoardDetailPage = () => {
             setCards(prevCards => {
                 const newCardsState = { ...prevCards };
 
-                // Remove from old list
                 if (newCardsState[oldListId]) {
                     newCardsState[oldListId] = newCardsState[oldListId].filter(c => c._id !== card._id);
                 }
 
-                // Add to new list, ensuring order is respected
                 if (newCardsState[newListId]) {
                     const updatedListCards = [...newCardsState[newListId].filter(c => c._id !== card._id), card];
                     newCardsState[newListId] = updatedListCards.sort((a, b) => a.order - b.order);
                 } else {
-                    // If the new list didn't exist in state (shouldn't happen if lists are fetched), create it
                     newCardsState[newListId] = [card];
                 }
 
@@ -175,17 +170,23 @@ const BoardDetailPage = () => {
                         c._id === updatedCard._id ? updatedCard : c
                     );
                 }
+                // If the updated card is the one currently in the modal, update the modal's card too
+                if (selectedCard && selectedCard._id === updatedCard._id) {
+                    // To ensure the assignedTo and dueDate are fully populated in the modal
+                    // we might need to fetch the card again or ensure the emitted card has full details.
+                    // For now, we'll update with what's provided.
+                    setSelectedCard(updatedCard);
+                }
                 return newCardsState;
             });
         });
 
-        // Cleanup function: Disconnect and leave the room when component unmounts or board ID changes
         return () => {
             console.log('Leaving board room:', id);
             socket.emit('leaveBoard', id);
             socket.disconnect();
         };
-    }, [id, user]); // Re-run this effect if board ID or user changes
+    }, [id, user, selectedCard]);
 
     // --- End Socket.IO Integration ---
 
@@ -202,9 +203,8 @@ const BoardDetailPage = () => {
             await addBoardMember(id, newMemberEmail);
             setNewMemberEmail('');
             setAddMemberSuccess('Member invited successfully!');
-            // Re-fetch board details to update the members list
             const boardRes = await getBoard(id);
-            setBoard(boardRes.data);
+            setBoard(boardRes.data); // Update board state to reflect new member
         } catch (err) {
             console.error('Failed to add member:', err);
             setAddMemberError(err.response?.data?.message || 'Failed to add member.');
@@ -222,7 +222,7 @@ const BoardDetailPage = () => {
         try {
             const { data } = await createList(id, { title: newListName });
             setLists([...lists, data]);
-            setCards(prevCards => ({ ...prevCards, [data._id]: [] })); // Initialize an empty array for new list's cards
+            setCards(prevCards => ({ ...prevCards, [data._id]: [] }));
             setNewListName('');
         } catch (err) {
             console.error('Failed to create list:', err);
@@ -231,19 +231,55 @@ const BoardDetailPage = () => {
     };
 
     const handleCardCreated = (newCard) => {
-        // This function is called when a card is created locally.
-        // The Socket.IO 'cardCreated' event will handle updates from other clients.
-        // We need to ensure we don't duplicate cards if the event fires for our own action.
         setCards(prevCards => {
             const listCards = prevCards[newCard.list] || [];
             if (listCards.some(card => card._id === newCard._id)) {
-                return prevCards; // Card already exists, likely from our own action
+                return prevCards;
             }
             return {
                 ...prevCards,
                 [newCard.list]: [...listCards, newCard].sort((a, b) => a.order - b.order)
             };
         });
+    };
+
+    const handleCardClick = (card) => {
+        setSelectedCard(card);
+    };
+
+    const handleCloseModal = () => {
+        setSelectedCard(null);
+    };
+
+    const handleSaveCardDetails = async (cardId, updatedFields) => {
+        try {
+            // Optimistic UI update for the modal's card
+            // We need to ensure assignedTo is a full user object if it changed,
+            // or just the ID if it's being passed to the backend.
+            // For the modal's display, we'll update the assignedTo property to reflect the member object.
+            const assignedMember = updatedFields.assignedTo
+                ? board.members.find(member => member._id === updatedFields.assignedTo)
+                : null;
+
+            setSelectedCard(prevCard => ({
+                ...prevCard,
+                ...updatedFields,
+                assignedTo: assignedMember, // Update with the full member object for display
+            }));
+
+            // Call API to update card (send assignedTo as ID or null)
+            await updateCard(cardId, {
+                ...updatedFields,
+                assignedTo: updatedFields.assignedTo || null, // Ensure it's ID or null for backend
+            });
+
+            // The Socket.IO 'cardUpdated' event will handle updating the main cards state
+            // and will also update the modal's card if it's still open.
+        } catch (err) {
+            console.error('Failed to save card details:', err);
+            setError('Failed to save card details. Please try again.');
+            fetchAllBoardData(); // Revert UI by fetching fresh data
+        }
     };
 
     // dnd-kit event handlers
@@ -254,25 +290,23 @@ const BoardDetailPage = () => {
     const onDragEnd = async (event) => {
         const { active, over } = event;
 
-        if (!over) { // Dropped outside any droppable area
+        if (!over) {
             setActiveId(null);
             return;
         }
 
         const activeCardId = active.id;
-        const overItemId = over.id; // Can be a card ID or a list ID
+        const overItemId = over.id;
 
         const sourceListId = findList(activeCardId);
-        const targetListId = findList(overItemId); // This will be the list ID where it was dropped
+        const targetListId = findList(overItemId);
 
-        // If source or target list cannot be determined, or they are invalid, return
         if (!sourceListId || !targetListId) {
             console.warn("Drag operation involved an invalid list ID. SourceListId:", sourceListId, "TargetListId:", targetListId);
             setActiveId(null);
             return;
         }
 
-        // Find the card that was dragged
         const draggedCard = cards[sourceListId].find(card => card._id === activeCardId);
         if (!draggedCard) {
             console.error("Dragged card not found in source list state.");
@@ -280,20 +314,15 @@ const BoardDetailPage = () => {
             return;
         }
 
-        // Determine the new order index in the target list
         let newOrderIndex;
         const targetListCards = cards[targetListId];
 
         if (overItemId === targetListId) {
-            // Dropped directly onto the list column (empty or at the end)
             newOrderIndex = targetListCards.length;
         } else {
-            // Dropped onto another card
             const overCardIndex = targetListCards.findIndex(card => card._id === overItemId);
             if (overCardIndex === -1) {
-                // Should not happen if overItemId is a valid card in targetListCards
-                console.error("Over card not found in target list state.");
-                newOrderIndex = targetListCards.length; // Default to end
+                newOrderIndex = targetListCards.length;
             } else {
                 newOrderIndex = overCardIndex;
             }
@@ -307,20 +336,18 @@ const BoardDetailPage = () => {
             const destinationCards = Array.from(newCardsState[targetListId]);
 
             const activeIndex = sourceCards.findIndex((card) => card._id === activeCardId);
-            if (activeIndex === -1) return prevCards; // Should be caught by earlier check
+            if (activeIndex === -1) return prevCards;
 
-            const [movedCard] = sourceCards.splice(activeIndex, 1); // Remove from source
+            const [movedCard] = sourceCards.splice(activeIndex, 1);
 
             if (sourceListId === targetListId) {
-                // Moving within the same list
                 destinationCards.splice(newOrderIndex, 0, movedCard);
-                newCardsState[sourceListId] = destinationCards; // Update the list
+                newCardsState[sourceListId] = destinationCards;
             } else {
-                // Moving to a different list
-                movedCard.list = targetListId; // Update the card's list ID in local state
-                newCardsState[sourceListId] = sourceCards; // Update source list
-                destinationCards.splice(newOrderIndex, 0, movedCard); // Insert into destination list
-                newCardsState[targetListId] = destinationCards; // Update destination list
+                movedCard.list = targetListId;
+                newCardsState[sourceListId] = sourceCards;
+                destinationCards.splice(newOrderIndex, 0, movedCard);
+                newCardsState[targetListId] = destinationCards;
             }
 
             return newCardsState;
@@ -328,18 +355,10 @@ const BoardDetailPage = () => {
 
         // --- Backend Update ---
         try {
-            // Call the new moveCard API endpoint
             await moveCard(activeCardId, targetListId, newOrderIndex);
-
-            // After successful backend update, the Socket.IO 'cardMoved' event will fire
-            // and update the state for all clients, including this one.
-            // So, we don't need to manually re-fetch here, as the Socket.IO listener will handle it.
-            // The optimistic update will be confirmed/corrected by the real-time event.
-
         } catch (err) {
             console.error('Failed to update card position on backend:', err);
             setError('Failed to update card position. Please refresh.');
-            // If the API call fails, revert the UI by fetching fresh data
             fetchAllBoardData();
         }
 
@@ -421,7 +440,7 @@ const BoardDetailPage = () => {
 
             <DndContext
                 sensors={sensors}
-                collisionDetection={closestCorners} // Use closestCorners for better sorting
+                collisionDetection={closestCorners}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onDragCancel={onDragCancel}
@@ -433,6 +452,7 @@ const BoardDetailPage = () => {
                             list={list}
                             cards={cards[list._id] || []}
                             onCardCreated={handleCardCreated}
+                            onCardClick={handleCardClick}
                         />
                     ))}
                     <div style={styles.addListSection}>
@@ -454,11 +474,21 @@ const BoardDetailPage = () => {
                 {/* DragOverlay for custom visual feedback during drag */}
                 {createPortal(
                     <DragOverlay>
-                        {activeCard ? <CardItem card={activeCard} /> : null}
+                        {activeCard ? <CardItem card={activeCard} onCardClick={() => { }} /> : null}
                     </DragOverlay>,
                     document.body
                 )}
             </DndContext>
+
+            {/* Card Detail Modal */}
+            {selectedCard && (
+                <CardDetailModal
+                    card={selectedCard}
+                    onClose={handleCloseModal}
+                    onSave={handleSaveCardDetails}
+                    boardMembers={board.members} /* <--- Pass board members here */
+                />
+            )}
         </div>
     );
 };
