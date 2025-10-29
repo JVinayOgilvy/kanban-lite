@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, addBoardMember, fetchLists, createList, fetchCards, updateCard } from '../api/api';
+import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard } from '../api/api'; // <--- Import moveCard
 import { useAuth } from '../context/AuthContext';
 import ListColumn from '../components/ListColumn';
 
@@ -155,102 +155,95 @@ const BoardDetailPage = () => {
             return;
         }
 
-        const activeId = active.id;
-        const overId = over.id;
+        const activeCardId = active.id;
+        const overItemId = over.id; // Can be a card ID or a list ID
 
-        const activeListId = findList(activeId);
-        const overListId = findList(overId);
+        const sourceListId = findList(activeCardId);
+        const targetListId = findList(overItemId); // This will be the list ID where it was dropped
 
-        // Crucial check: Ensure both active and over IDs belong to valid lists
-        if (!activeListId || !overListId) {
-            console.warn("Drag operation involved an invalid list ID. ActiveListId:", activeListId, "OverListId:", overListId);
+        // If source or target list cannot be determined, or they are invalid, return
+        if (!sourceListId || !targetListId) {
+            console.warn("Drag operation involved an invalid list ID. SourceListId:", sourceListId, "TargetListId:", targetListId);
             setActiveId(null);
             return;
         }
 
-        // Optimistic UI update
+        // Find the card that was dragged
+        const draggedCard = cards[sourceListId].find(card => card._id === activeCardId);
+        if (!draggedCard) {
+            console.error("Dragged card not found in source list state.");
+            setActiveId(null);
+            return;
+        }
+
+        // Determine the new order index in the target list
+        let newOrderIndex;
+        const targetListCards = cards[targetListId];
+
+        if (overItemId === targetListId) {
+            // Dropped directly onto the list column (empty or at the end)
+            newOrderIndex = targetListCards.length;
+        } else {
+            // Dropped onto another card
+            const overCardIndex = targetListCards.findIndex(card => card._id === overItemId);
+            if (overCardIndex === -1) {
+                // Should not happen if overItemId is a valid card in targetListCards
+                console.error("Over card not found in target list state.");
+                newOrderIndex = targetListCards.length; // Default to end
+            } else {
+                newOrderIndex = overCardIndex;
+            }
+        }
+
+        // --- Optimistic UI Update ---
         setCards((prevCards) => {
             const newCardsState = { ...prevCards };
 
-            // Ensure the lists exist in the state before trying to access them
-            if (!newCardsState[activeListId] || !newCardsState[overListId]) {
-                console.error("Attempted to access non-existent list in cards state during drag-end optimistic update.");
-                return prevCards; // Revert to previous state
-            }
+            const sourceCards = Array.from(newCardsState[sourceListId]);
+            const destinationCards = Array.from(newCardsState[targetListId]);
 
-            // Make mutable copies of the card arrays for manipulation
-            const activeCards = Array.from(newCardsState[activeListId]);
-            const overCards = Array.from(newCardsState[overListId]);
+            const activeIndex = sourceCards.findIndex((card) => card._id === activeCardId);
+            if (activeIndex === -1) return prevCards; // Should be caught by earlier check
 
-            const activeIndex = activeCards.findIndex((card) => card._id === activeId);
-            // If the card isn't found in its supposed list, something is wrong with state.
-            if (activeIndex === -1) {
-                console.error("Dragged card not found in its active list during optimistic update.");
-                return prevCards;
-            }
+            const [movedCard] = sourceCards.splice(activeIndex, 1); // Remove from source
 
-            // Determine the final index in the destination list
-            // If overId is a list ID (not a card ID), overIndex will be -1.
-            // In this case, we want to place the card at the end of the list.
-            const overIndex = overCards.findIndex((card) => card._id === overId);
-            const finalOverIndex = overIndex === -1 ? overCards.length : overIndex;
-
-            if (activeListId === overListId) {
+            if (sourceListId === targetListId) {
                 // Moving within the same list
-                const newOrder = arrayMove(activeCards, activeIndex, finalOverIndex);
-                newCardsState[activeListId] = newOrder;
+                destinationCards.splice(newOrderIndex, 0, movedCard);
+                newCardsState[sourceListId] = destinationCards; // Update the list
             } else {
                 // Moving to a different list
-                const [movedCard] = activeCards.splice(activeIndex, 1); // This should now always find a card
-                if (!movedCard) { // Double-check, though activeIndex check above should prevent this
-                    console.error("Moved card was undefined after splice.");
-                    return prevCards;
-                }
-                movedCard.list = overListId; // Update the card's list ID
-                newCardsState[activeListId] = activeCards; // Update source list
-                overCards.splice(finalOverIndex, 0, movedCard); // Insert into destination list
-                newCardsState[overListId] = overCards; // Update destination list
+                movedCard.list = targetListId; // Update the card's list ID in local state
+                newCardsState[sourceListId] = sourceCards; // Update source list
+                destinationCards.splice(newOrderIndex, 0, movedCard); // Insert into destination list
+                newCardsState[targetListId] = destinationCards; // Update destination list
             }
+
             return newCardsState;
         });
 
-        // Backend update
+        // --- Backend Update ---
         try {
-            // Re-calculate indices and list IDs based on the final state after optimistic update
-            // This ensures we send the correct data to the backend.
-            const currentActiveListCards = cards[activeListId]; // Get the current state of the active list
-            const currentOverListCards = cards[overListId];     // Get the current state of the over list
+            // Call the new moveCard API endpoint
+            await moveCard(activeCardId, targetListId, newOrderIndex);
 
-            const newActiveIndex = currentActiveListCards.findIndex((card) => card._id === activeId);
-            const newOverIndex = currentOverListCards.findIndex((card) => card._id === overId);
-            const finalBackendOrder = newOverIndex === -1 ? currentOverListCards.length : newOverIndex;
-
-            let updatedCardData = {
-                order: finalBackendOrder, // New order within the destination list
-            };
-
-            if (activeListId !== overListId) {
-                // Card moved to a different list
-                updatedCardData.listId = overListId;
-            }
-
-            await updateCard(activeId, updatedCardData);
-
-            // Re-fetch all cards for both affected lists to ensure correct order/state from backend
-            // This is a robust way to handle potential backend reordering logic
-            const updatedSourceListCards = await fetchCards(activeListId);
-            const updatedDestinationListCards = await fetchCards(overListId);
+            // After successful backend update, re-fetch all cards for both affected lists
+            // This ensures consistency and correct order from the server's perspective.
+            const updatedSourceListCards = await fetchCards(sourceListId);
+            const updatedDestinationListCards = await fetchCards(targetListId);
 
             setCards(prevCards => ({
                 ...prevCards,
-                [activeListId]: updatedSourceListCards.data,
-                [overListId]: updatedDestinationListCards.data,
+                [sourceListId]: updatedSourceListCards.data,
+                [targetListId]: updatedDestinationListCards.data,
             }));
 
         } catch (err) {
             console.error('Failed to update card position on backend:', err);
             setError('Failed to update card position. Please refresh.');
             // TODO: Implement a more robust UI revert mechanism here if needed for production
+            // For now, a full re-fetch on error or refresh is a simple fallback.
+            fetchAllBoardData(); // Revert UI by fetching fresh data
         }
 
         setActiveId(null);
