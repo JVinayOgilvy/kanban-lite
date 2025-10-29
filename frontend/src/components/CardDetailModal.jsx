@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
-// Add boardMembers prop
+// --- NEW: Import CSS Module ---
+import styles from '../assets/css/components/CardDetailModal.module.css';
+
 const CardDetailModal = ({ card, onClose, onSave, boardMembers = [] }) => {
     console.log('Rendering CardDetailModal from components for card:', card);
     console.log('Board members available for assignment:', boardMembers);
@@ -14,23 +16,20 @@ const CardDetailModal = ({ card, onClose, onSave, boardMembers = [] }) => {
         if (card) {
             setTitle(card.title);
             setDescription(card.description || '');
-            // Initialize assignedTo with the ID of the assigned user, or empty string if unassigned
             setAssignedTo(card.assignedTo ? card.assignedTo._id : '');
-            // Format dueDate for input type="date" (YYYY-MM-DD)
             setDueDate(card.dueDate ? new Date(card.dueDate).toISOString().split('T')[0] : '');
-            setIsEditing(false); // Reset editing state when card changes
+            setIsEditing(false);
         }
     }, [card]);
 
     if (!card) return null;
 
     const handleSave = () => {
-        // Prepare updated fields, converting assignedTo to null if empty
         const updatedFields = {
             title,
             description,
-            assignedTo: assignedTo || null, // Send null if no user selected
-            dueDate: dueDate || null,       // Send null if no date selected
+            assignedTo: assignedTo || null,
+            dueDate: dueDate || null,
         };
         onSave(card._id, updatedFields);
         setIsEditing(false);
@@ -41,9 +40,9 @@ const CardDetailModal = ({ card, onClose, onSave, boardMembers = [] }) => {
     const dueDateFormatted = card.dueDate ? new Date(card.dueDate).toLocaleDateString() : 'No due date';
 
     return (
-        <div style={modalStyles.overlay} onClick={onClose}>
-            <div style={modalStyles.modalContent} onClick={(e) => e.stopPropagation()}>
-                <button style={modalStyles.closeButton} onClick={onClose}>&times;</button>
+        <div className={styles.overlay} onClick={onClose}>
+            <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+                <button className={styles.closeButton} onClick={onClose}>&times;</button>
 
                 {isEditing ? (
                     <>
@@ -51,23 +50,22 @@ const CardDetailModal = ({ card, onClose, onSave, boardMembers = [] }) => {
                             type="text"
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            style={modalStyles.titleInput}
+                            className={styles.titleInput}
                             placeholder="Card Title"
                         />
                         <textarea
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            style={modalStyles.descriptionTextarea}
+                            className={styles.descriptionTextarea}
                             placeholder="Add a more detailed description..."
                         />
 
-                        {/* Assigned To Dropdown */}
-                        <div style={modalStyles.formGroup}>
-                            <label style={modalStyles.label}>Assigned To:</label>
+                        <div className={styles.formGroup}>
+                            <label className={styles.label}>Assigned To:</label>
                             <select
                                 value={assignedTo}
                                 onChange={(e) => setAssignedTo(e.target.value)}
-                                style={modalStyles.selectInput}
+                                className={styles.selectInput}
                             >
                                 <option value="">Unassigned</option>
                                 {boardMembers.map(member => (
@@ -78,163 +76,35 @@ const CardDetailModal = ({ card, onClose, onSave, boardMembers = [] }) => {
                             </select>
                         </div>
 
-                        {/* Due Date Picker */}
-                        <div style={modalStyles.formGroup}>
-                            <label style={modalStyles.label}>Due Date:</label>
+                        <div className={styles.formGroup}>
+                            <label className={styles.label}>Due Date:</label>
                             <input
                                 type="date"
                                 value={dueDate}
                                 onChange={(e) => setDueDate(e.target.value)}
-                                style={modalStyles.dateInput}
+                                className={styles.dateInput}
                             />
                         </div>
 
-                        <div style={modalStyles.actions}>
-                            <button style={modalStyles.saveButton} onClick={handleSave}>Save</button>
-                            <button style={modalStyles.cancelButton} onClick={() => setIsEditing(false)}>Cancel</button>
+                        <div className={styles.actions}>
+                            <button className={styles.saveButton} onClick={handleSave}>Save</button>
+                            <button className={styles.cancelButton} onClick={() => setIsEditing(false)}>Cancel</button>
                         </div>
                     </>
                 ) : (
                     <>
-                        <h3 style={modalStyles.title}>{card.title}</h3>
-                        <p style={modalStyles.description}>{card.description || 'No description provided.'}</p>
-                        <p style={modalStyles.meta}>Assigned to: <strong>{assignedToName}</strong></p>
-                        <p style={modalStyles.meta}>Due Date: <strong>{dueDateFormatted}</strong></p>
-                        <div style={modalStyles.actions}>
-                            <button style={modalStyles.editButton} onClick={() => setIsEditing(true)}>Edit</button>
+                        <h3 className={styles.title}>{card.title}</h3>
+                        <p className={styles.description}>{card.description || 'No description provided.'}</p>
+                        <p className={styles.meta}>Assigned to: <strong>{assignedToName}</strong></p>
+                        <p className={styles.meta}>Due Date: <strong>{dueDateFormatted}</strong></p>
+                        <div className={styles.actions}>
+                            <button className={styles.editButton} onClick={() => setIsEditing(true)}>Edit</button>
                         </div>
                     </>
                 )}
             </div>
         </div>
     );
-};
-
-const modalStyles = {
-    overlay: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 1000,
-    },
-    modalContent: {
-        backgroundColor: '#fff',
-        padding: '25px',
-        borderRadius: '8px',
-        width: 'clamp(300px, 80%, 600px)',
-        maxHeight: '90vh',
-        overflowY: 'auto',
-        position: 'relative',
-        boxShadow: '0 5px 15px rgba(0, 0, 0, 0.3)',
-    },
-    closeButton: {
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
-        background: 'none',
-        border: 'none',
-        fontSize: '1.5em',
-        cursor: 'pointer',
-        color: '#555',
-    },
-    title: {
-        fontSize: '1.8em',
-        marginBottom: '10px',
-        color: '#333',
-    },
-    titleInput: {
-        width: 'calc(100% - 20px)',
-        padding: '10px',
-        fontSize: '1.8em',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
-        marginBottom: '10px',
-    },
-    description: {
-        fontSize: '1em',
-        color: '#666',
-        marginBottom: '15px',
-        whiteSpace: 'pre-wrap',
-    },
-    descriptionTextarea: {
-        width: 'calc(100% - 20px)',
-        minHeight: '100px',
-        padding: '10px',
-        fontSize: '1em',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
-        marginBottom: '15px',
-        resize: 'vertical',
-    },
-    meta: {
-        fontSize: '0.9em',
-        color: '#777',
-        marginBottom: '5px',
-    },
-    formGroup: { // New style for form groups
-        marginBottom: '15px',
-    },
-    label: { // New style for labels
-        display: 'block',
-        marginBottom: '5px',
-        fontWeight: 'bold',
-        color: '#555',
-    },
-    selectInput: { // New style for select dropdown
-        width: '100%',
-        padding: '10px',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
-        backgroundColor: '#f8f8f8',
-        fontSize: '1em',
-    },
-    dateInput: { // New style for date input
-        width: '100%',
-        padding: '10px',
-        border: '1px solid #ddd',
-        borderRadius: '4px',
-        backgroundColor: '#f8f8f8',
-        fontSize: '1em',
-    },
-    actions: {
-        display: 'flex',
-        justifyContent: 'flex-end',
-        gap: '10px',
-        marginTop: '20px',
-    },
-    editButton: {
-        backgroundColor: '#007bff',
-        color: 'white',
-        padding: '8px 15px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontSize: '1em',
-    },
-    saveButton: {
-        backgroundColor: '#28a745',
-        color: 'white',
-        padding: '8px 15px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontSize: '1em',
-    },
-    cancelButton: {
-        backgroundColor: '#6c757d',
-        color: 'white',
-        padding: '8px 15px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontSize: '1em',
-    },
 };
 
 export default CardDetailModal;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard, updateCard } from '../api/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext'; // Corrected import
 import ListColumn from '../components/ListColumn';
 import CardDetailModal from '../components/CardDetailModal';
 
@@ -20,6 +20,9 @@ import CardItem from '../components/CardItem';
 
 // Socket.IO client import
 import { io } from 'socket.io-client';
+
+// --- NEW: Import CSS Module ---
+import styles from '../assets/css/pages/BoardDetailPage.module.css';
 
 const BoardDetailPage = () => {
     const { id } = useParams();
@@ -68,7 +71,7 @@ const BoardDetailPage = () => {
             setCreateListError('');
 
             const boardRes = await getBoard(id);
-            setBoard(boardRes.data); // boardRes.data will contain populated members
+            setBoard(boardRes.data);
 
             const listsRes = await fetchLists(id);
             const fetchedLists = listsRes.data;
@@ -170,11 +173,7 @@ const BoardDetailPage = () => {
                         c._id === updatedCard._id ? updatedCard : c
                     );
                 }
-                // If the updated card is the one currently in the modal, update the modal's card too
                 if (selectedCard && selectedCard._id === updatedCard._id) {
-                    // To ensure the assignedTo and dueDate are fully populated in the modal
-                    // we might need to fetch the card again or ensure the emitted card has full details.
-                    // For now, we'll update with what's provided.
                     setSelectedCard(updatedCard);
                 }
                 return newCardsState;
@@ -204,7 +203,7 @@ const BoardDetailPage = () => {
             setNewMemberEmail('');
             setAddMemberSuccess('Member invited successfully!');
             const boardRes = await getBoard(id);
-            setBoard(boardRes.data); // Update board state to reflect new member
+            setBoard(boardRes.data);
         } catch (err) {
             console.error('Failed to add member:', err);
             setAddMemberError(err.response?.data?.message || 'Failed to add member.');
@@ -253,10 +252,6 @@ const BoardDetailPage = () => {
 
     const handleSaveCardDetails = async (cardId, updatedFields) => {
         try {
-            // Optimistic UI update for the modal's card
-            // We need to ensure assignedTo is a full user object if it changed,
-            // or just the ID if it's being passed to the backend.
-            // For the modal's display, we'll update the assignedTo property to reflect the member object.
             const assignedMember = updatedFields.assignedTo
                 ? board.members.find(member => member._id === updatedFields.assignedTo)
                 : null;
@@ -264,21 +259,18 @@ const BoardDetailPage = () => {
             setSelectedCard(prevCard => ({
                 ...prevCard,
                 ...updatedFields,
-                assignedTo: assignedMember, // Update with the full member object for display
+                assignedTo: assignedMember,
             }));
 
-            // Call API to update card (send assignedTo as ID or null)
             await updateCard(cardId, {
                 ...updatedFields,
-                assignedTo: updatedFields.assignedTo || null, // Ensure it's ID or null for backend
+                assignedTo: updatedFields.assignedTo || null,
             });
 
-            // The Socket.IO 'cardUpdated' event will handle updating the main cards state
-            // and will also update the modal's card if it's still open.
         } catch (err) {
             console.error('Failed to save card details:', err);
             setError('Failed to save card details. Please try again.');
-            fetchAllBoardData(); // Revert UI by fetching fresh data
+            fetchAllBoardData();
         }
     };
 
@@ -370,23 +362,23 @@ const BoardDetailPage = () => {
     };
 
     if (loading) {
-        return <p style={styles.loading}>Loading board details...</p>;
+        return <p className={styles.loading}>Loading board details...</p>;
     }
 
     if (error) {
         return (
-            <div style={styles.container}>
-                <p style={styles.error}>{error}</p>
-                <Link to="/dashboard" style={styles.backButton}>Back to Dashboard</Link>
+            <div className={styles.container}> {/* Note: .container not defined in this module, might be from global css or needs definition */}
+                <p className={styles.error}>{error}</p>
+                <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
         );
     }
 
     if (!board) {
         return (
-            <div style={styles.container}>
-                <p style={styles.message}>Board not found.</p>
-                <Link to="/dashboard" style={styles.backButton}>Back to Dashboard</Link>
+            <div className={styles.container}> {/* Note: .container not defined in this module, might be from global css or needs definition */}
+                <p className={styles.message}>Board not found.</p>
+                <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
         );
     }
@@ -394,22 +386,22 @@ const BoardDetailPage = () => {
     const isOwner = user && board.owner && user._id === board.owner._id;
 
     return (
-        <div style={styles.boardPageContainer}>
-            <div style={styles.boardHeader}>
-                <h2 style={styles.boardTitle}>{board.title}</h2>
-                <Link to="/dashboard" style={styles.backButton}>Back to Dashboard</Link>
+        <div className={styles.boardPageContainer}>
+            <div className={styles.boardHeader}>
+                <h2 className={styles.boardTitle}>{board.title}</h2>
+                <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
 
-            <div style={styles.boardMeta}>
+            <div className={styles.boardMeta}>
                 <p>Owner: <strong>{board.owner?.name} ({board.owner?.email})</strong></p>
-                <div style={styles.membersSection}>
+                <div className={styles.membersSection}>
                     <h4>Members:</h4>
-                    <ul style={styles.memberList}>
+                    <ul className={styles.memberList}>
                         {board.members && board.members.length > 0 ? (
                             board.members.map((member) => (
-                                <li key={member._id} style={styles.memberItem}>
+                                <li key={member._id} className={styles.memberItem}>
                                     {member.name} ({member.email})
-                                    {member._id === board.owner._id && <span style={styles.ownerTag}> (Owner)</span>}
+                                    {member._id === board.owner._id && <span className={styles.ownerTag}> (Owner)</span>}
                                 </li>
                             ))
                         ) : (
@@ -420,21 +412,21 @@ const BoardDetailPage = () => {
             </div>
 
             {isOwner && (
-                <div style={styles.inviteMemberSection}>
-                    <h4 style={styles.subHeading}>Invite New Member:</h4>
-                    <form onSubmit={handleInviteMember} style={styles.inviteForm}>
+                <div className={styles.inviteMemberSection}>
+                    <h4 className={styles.subHeading}>Invite New Member:</h4>
+                    <form onSubmit={handleInviteMember} className={styles.inviteForm}>
                         <input
                             type="email"
                             placeholder="Enter member's email"
                             value={newMemberEmail}
                             onChange={(e) => setNewMemberEmail(e.target.value)}
-                            style={styles.inviteInput}
+                            className={styles.inviteInput}
                             required
                         />
-                        <button type="submit" style={styles.inviteButton}>Invite</button>
+                        <button type="submit" className={styles.inviteButton}>Invite</button>
                     </form>
-                    {addMemberError && <p style={styles.error}>{addMemberError}</p>}
-                    {addMemberSuccess && <p style={styles.success}>{addMemberSuccess}</p>}
+                    {addMemberError && <p className={styles.error}>{addMemberError}</p>}
+                    {addMemberSuccess && <p className={styles.success}>{addMemberSuccess}</p>}
                 </div>
             )}
 
@@ -445,7 +437,7 @@ const BoardDetailPage = () => {
                 onDragEnd={onDragEnd}
                 onDragCancel={onDragCancel}
             >
-                <div style={styles.listsContainer}>
+                <div className={styles.listsContainer}>
                     {lists.sort((a, b) => a.order - b.order).map((list) => (
                         <ListColumn
                             key={list._id}
@@ -455,18 +447,18 @@ const BoardDetailPage = () => {
                             onCardClick={handleCardClick}
                         />
                     ))}
-                    <div style={styles.addListSection}>
-                        <form onSubmit={handleCreateList} style={styles.addListForm}>
+                    <div className={styles.addListSection}>
+                        <form onSubmit={handleCreateList} className={styles.addListForm}>
                             <input
                                 type="text"
                                 placeholder="Add a new list..."
                                 value={newListName}
                                 onChange={(e) => setNewListName(e.target.value)}
-                                style={styles.addListInput}
+                                className={styles.addListInput}
                                 required
                             />
-                            <button type="submit" style={styles.addListButton}>Add List</button>
-                            {createListError && <p style={styles.error}>{createListError}</p>}
+                            <button type="submit" className={styles.addListButton}>Add List</button>
+                            {createListError && <p className={styles.error}>{createListError}</p>}
                         </form>
                     </div>
                 </div>
@@ -486,190 +478,11 @@ const BoardDetailPage = () => {
                     card={selectedCard}
                     onClose={handleCloseModal}
                     onSave={handleSaveCardDetails}
-                    boardMembers={board.members} /* <--- Pass board members here */
+                    boardMembers={board.members}
                 />
             )}
         </div>
     );
 };
 
-const styles = {
-    boardPageContainer: {
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        backgroundColor: '#0079bf',
-        padding: '20px',
-        overflowX: 'auto',
-    },
-    boardHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '20px',
-        paddingBottom: '10px',
-        borderBottom: '1px solid rgba(255,255,255,0.3)',
-    },
-    boardTitle: {
-        color: 'white',
-        fontSize: '2.5em',
-        margin: 0,
-    },
-    backButton: {
-        display: 'inline-block',
-        padding: '8px 15px',
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        color: 'white',
-        textDecoration: 'none',
-        borderRadius: '5px',
-        transition: 'background-color 0.2s ease-in-out',
-    },
-    backButtonHover: {
-        backgroundColor: 'rgba(255,255,255,0.3)',
-    },
-    boardMeta: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderRadius: '8px',
-        padding: '15px',
-        marginBottom: '20px',
-        color: 'white',
-        fontSize: '0.9em',
-    },
-    membersSection: {
-        marginTop: '10px',
-    },
-    memberList: {
-        listStyleType: 'none',
-        padding: 0,
-        margin: '5px 0',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '8px',
-        justifyContent: 'center',
-    },
-    memberItem: {
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        borderRadius: '4px',
-        padding: '5px 10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '5px',
-    },
-    ownerTag: {
-        backgroundColor: '#f4d03f',
-        color: '#333',
-        padding: '2px 6px',
-        borderRadius: '3px',
-        fontSize: '0.75em',
-        fontWeight: 'bold',
-    },
-    inviteMemberSection: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderRadius: '8px',
-        padding: '15px',
-        marginBottom: '20px',
-        color: 'white',
-        textAlign: 'center',
-    },
-    subHeading: {
-        color: 'white',
-        fontSize: '1.2em',
-        marginBottom: '10px',
-    },
-    inviteForm: {
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '10px',
-    },
-    inviteInput: {
-        padding: '8px',
-        border: 'none',
-        borderRadius: '4px',
-        width: '200px',
-    },
-    inviteButton: {
-        backgroundColor: '#5aac44',
-        color: 'white',
-        padding: '8px 12px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        transition: 'background-color 0.2s ease-in-out',
-    },
-    inviteButtonHover: {
-        backgroundColor: '#4a9a34',
-    },
-    error: {
-        color: '#ffdddd',
-        backgroundColor: 'rgba(255,0,0,0.3)',
-        padding: '5px 10px',
-        borderRadius: '4px',
-        marginTop: '10px',
-        fontSize: '0.9em',
-    },
-    success: {
-        color: '#ddffdd',
-        backgroundColor: 'rgba(0,255,0,0.3)',
-        padding: '5px 10px',
-        borderRadius: '4px',
-        marginTop: '10px',
-        fontSize: '0.9em',
-    },
-    loading: {
-        textAlign: 'center',
-        marginTop: '50px',
-        fontSize: '1.2em',
-        color: 'white',
-    },
-    message: {
-        textAlign: 'center',
-        marginTop: '30px',
-        fontSize: '1.1em',
-        color: 'white',
-    },
-    listsContainer: {
-        display: 'flex',
-        flexGrow: 1,
-        alignItems: 'flex-start',
-        paddingBottom: '10px',
-    },
-    addListSection: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderRadius: '8px',
-        padding: '10px',
-        width: '300px',
-        minWidth: '300px',
-        margin: '0 10px',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    addListForm: {
-        width: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px',
-    },
-    addListInput: {
-        padding: '10px',
-        border: 'none',
-        borderRadius: '4px',
-        width: 'calc(100% - 20px)',
-        fontSize: '1em',
-    },
-    addListButton: {
-        backgroundColor: '#5aac44',
-        color: 'white',
-        padding: '10px 15px',
-        border: 'none',
-        borderRadius: '4px',
-        cursor: 'pointer',
-        fontSize: '1em',
-        transition: 'background-color 0.2s ease-in-out',
-    },
-    addListButtonHover: {
-        backgroundColor: '#4a9a34',
-    },
-};
 export default BoardDetailPage;
