@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard } from '../api/api'; // <--- Import moveCard
+import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import ListColumn from '../components/ListColumn';
 
@@ -16,6 +16,9 @@ import {
 import { arrayMove } from '@dnd-kit/sortable';
 import { createPortal } from 'react-dom'; // For DragOverlay
 import CardItem from '../components/CardItem'; // Needed for DragOverlay
+
+// Socket.IO client import
+import { io } from 'socket.io-client'; // <--- NEW IMPORT
 
 const BoardDetailPage = () => {
     const { id } = useParams();
@@ -94,6 +97,98 @@ const BoardDetailPage = () => {
         }
     }, [user, fetchAllBoardData]); // Re-fetch if user or fetchAllBoardData changes
 
+    // --- NEW: Socket.IO Integration ---
+    useEffect(() => {
+        if (!id || !user) return; // Don't connect if board ID or user is not available
+
+        // Construct the Socket.IO server URL (remove '/api' from the base URL)
+        const socketUrl = import.meta.env.VITE_API_BASE_URL.replace('/api', '');
+        const socket = io(socketUrl, {
+            withCredentials: true, // Important for sending cookies/auth headers if needed (though we use JWT)
+        });
+
+        socket.on('connect', () => {
+            console.log('Socket.IO connected:', socket.id);
+            socket.emit('joinBoard', id); // Join the specific board's room
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Socket.IO disconnected');
+        });
+
+        socket.on('cardCreated', (newCard) => {
+            console.log('Real-time: cardCreated', newCard);
+            setCards(prevCards => {
+                const listCards = prevCards[newCard.list] || [];
+                // Check if card already exists to prevent duplicates from own action
+                if (listCards.some(card => card._id === newCard._id)) {
+                    return prevCards;
+                }
+                return {
+                    ...prevCards,
+                    [newCard.list]: [...listCards, newCard].sort((a, b) => a.order - b.order)
+                };
+            });
+        });
+
+        socket.on('cardMoved', ({ card, oldListId, newListId }) => {
+            console.log('Real-time: cardMoved', { card, oldListId, newListId });
+            setCards(prevCards => {
+                const newCardsState = { ...prevCards };
+
+                // Remove from old list
+                if (newCardsState[oldListId]) {
+                    newCardsState[oldListId] = newCardsState[oldListId].filter(c => c._id !== card._id);
+                }
+
+                // Add to new list, ensuring order is respected
+                if (newCardsState[newListId]) {
+                    const updatedListCards = [...newCardsState[newListId].filter(c => c._id !== card._id), card];
+                    newCardsState[newListId] = updatedListCards.sort((a, b) => a.order - b.order);
+                } else {
+                    // If the new list didn't exist in state (shouldn't happen if lists are fetched), create it
+                    newCardsState[newListId] = [card];
+                }
+
+                return newCardsState;
+            });
+        });
+
+        socket.on('cardDeleted', ({ _id, list, board }) => {
+            console.log('Real-time: cardDeleted', { _id, list, board });
+            setCards(prevCards => {
+                const newCardsState = { ...prevCards };
+                if (newCardsState[list]) {
+                    newCardsState[list] = newCardsState[list].filter(c => c._id !== _id);
+                }
+                return newCardsState;
+            });
+        });
+
+        socket.on('cardUpdated', (updatedCard) => {
+            console.log('Real-time: cardUpdated', updatedCard);
+            setCards(prevCards => {
+                const newCardsState = { ...prevCards };
+                const listId = updatedCard.list;
+                if (newCardsState[listId]) {
+                    newCardsState[listId] = newCardsState[listId].map(c =>
+                        c._id === updatedCard._id ? updatedCard : c
+                    );
+                }
+                return newCardsState;
+            });
+        });
+
+        // Cleanup function: Disconnect and leave the room when component unmounts or board ID changes
+        return () => {
+            console.log('Leaving board room:', id);
+            socket.emit('leaveBoard', id);
+            socket.disconnect();
+        };
+    }, [id, user]); // Re-run this effect if board ID or user changes
+
+    // --- End Socket.IO Integration ---
+
     const handleInviteMember = async (e) => {
         e.preventDefault();
         setAddMemberError('');
@@ -136,10 +231,19 @@ const BoardDetailPage = () => {
     };
 
     const handleCardCreated = (newCard) => {
-        setCards(prevCards => ({
-            ...prevCards,
-            [newCard.list]: [...(prevCards[newCard.list] || []), newCard].sort((a, b) => a.order - b.order)
-        }));
+        // This function is called when a card is created locally.
+        // The Socket.IO 'cardCreated' event will handle updates from other clients.
+        // We need to ensure we don't duplicate cards if the event fires for our own action.
+        setCards(prevCards => {
+            const listCards = prevCards[newCard.list] || [];
+            if (listCards.some(card => card._id === newCard._id)) {
+                return prevCards; // Card already exists, likely from our own action
+            }
+            return {
+                ...prevCards,
+                [newCard.list]: [...listCards, newCard].sort((a, b) => a.order - b.order)
+            };
+        });
     };
 
     // dnd-kit event handlers
@@ -227,23 +331,16 @@ const BoardDetailPage = () => {
             // Call the new moveCard API endpoint
             await moveCard(activeCardId, targetListId, newOrderIndex);
 
-            // After successful backend update, re-fetch all cards for both affected lists
-            // This ensures consistency and correct order from the server's perspective.
-            const updatedSourceListCards = await fetchCards(sourceListId);
-            const updatedDestinationListCards = await fetchCards(targetListId);
-
-            setCards(prevCards => ({
-                ...prevCards,
-                [sourceListId]: updatedSourceListCards.data,
-                [targetListId]: updatedDestinationListCards.data,
-            }));
+            // After successful backend update, the Socket.IO 'cardMoved' event will fire
+            // and update the state for all clients, including this one.
+            // So, we don't need to manually re-fetch here, as the Socket.IO listener will handle it.
+            // The optimistic update will be confirmed/corrected by the real-time event.
 
         } catch (err) {
             console.error('Failed to update card position on backend:', err);
             setError('Failed to update card position. Please refresh.');
-            // TODO: Implement a more robust UI revert mechanism here if needed for production
-            // For now, a full re-fetch on error or refresh is a simple fallback.
-            fetchAllBoardData(); // Revert UI by fetching fresh data
+            // If the API call fails, revert the UI by fetching fresh data
+            fetchAllBoardData();
         }
 
         setActiveId(null);
