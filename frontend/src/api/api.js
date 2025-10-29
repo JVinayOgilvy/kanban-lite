@@ -28,7 +28,8 @@ export const deleteList = (listId) => API.delete(`/lists/${listId}`);
 // Card API functions
 export const fetchCards = (listId) => API.get(`/lists/${listId}/cards`);
 export const createCard = (listId, newCard) => API.post(`/lists/${listId}/cards`, newCard);
-export const updateCard = (cardId, updatedCard) => API.put(`/cards/${cardId}`, updatedCard); // <-- This is what we'll use
+export const updateCard = (cardId, updatedCard) => API.put(`/cards/${cardId}`, updatedCard);
 export const deleteCard = (cardId) => API.delete(`/cards/${cardId}`);
+export const moveCard = (cardId, targetListId, newOrderIndex) => API.put(`/cards/${cardId}/move`, { targetListId, newOrderIndex }); // <--- Add this
 
 export default API;

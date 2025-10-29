@@ -5,6 +5,7 @@ const {
     createCard,
     updateCard,
     deleteCard,
+    moveCard, // <--- Add this
 } = require('../controllers/cardController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -20,5 +21,8 @@ router.route('/cards/:id')
     .get(protect, getCardById)
     .put(protect, updateCard)
     .delete(protect, deleteCard);
+
+// New route for moving a card
+router.put('/cards/:id/move', protect, moveCard); // <--- Add this new route
 
 module.exports = router;
