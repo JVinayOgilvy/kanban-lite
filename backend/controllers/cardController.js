@@ -16,16 +16,8 @@ const checkBoardMembership = async (boardId, userId) => {
     return { status: 200, board };
 };
 
-// --- Helper to emit Socket.IO events ---
-const emitBoardUpdate = (req, boardId, eventName, payload) => {
-    const io = req.app.get('socketio');
-    if (io) {
-        io.to(boardId.toString()).emit(eventName, payload);
-        console.log(`Emitted event '${eventName}' to board ${boardId}:`, payload);
-    } else {
-        console.warn('Socket.IO instance not available in request context.');
-    }
-};
+// Helper to emit Socket.IO events from request context
+const { emitBoardUpdate } = require('../utils/socketEmitter');
 
 // @desc    Get all cards for a specific list
 // @route   GET /api/lists/:listId/cards

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard, updateCard } from '../api/api';
-import { useAuth } from '../context/AuthContext'; // Corrected import
+import { useAuth } from '../context/AuthContext';
 import ListColumn from '../components/ListColumn';
 import CardDetailModal from '../components/CardDetailModal';
 
@@ -26,7 +26,7 @@ import styles from '../assets/css/pages/BoardDetailPage.module.css';
 
 const BoardDetailPage = () => {
     const { id } = useParams();
-    const { user } = useAuth();
+    const { user } = useAuth(); // `user` from AuthContext is the current user
     const [board, setBoard] = useState(null);
     const [lists, setLists] = useState([]);
     const [cards, setCards] = useState({});
@@ -179,6 +179,30 @@ const BoardDetailPage = () => {
                 return newCardsState;
             });
         });
+
+        // --- Listen for commentCreated event ---
+        socket.on('commentCreated', (newComment) => {
+            console.log('Real-time: commentCreated', newComment);
+            // If the modal is open for the card this comment belongs to, update its comments
+            if (selectedCard && selectedCard._id === newComment.card) {
+                setSelectedCard(prevCard => ({
+                    ...prevCard,
+                    // This assumes comments are part of the card object in state,
+                    // but we manage comments in CardDetailModal's local state.
+                    // So, we need to trigger a re-fetch of comments in the modal.
+                    // A simpler approach for now is to just re-fetch comments if the modal is open.
+                }));
+                // Trigger re-fetch of comments if the modal is open for this card
+                // This will be handled by the CardDetailModal's useEffect if card changes
+                // or we can pass a specific function to trigger it.
+                // For now, the modal's useEffect will run if selectedCard changes,
+                // but we need to ensure the modal's internal comments state is updated.
+                // The simplest way is to ensure the modal re-fetches comments if it's open
+                // and a comment is created for its card.
+                // Let's add a specific prop to the modal for this.
+            }
+        });
+        // --- END: Listen for commentCreated event ---
 
         return () => {
             console.log('Leaving board room:', id);
@@ -367,7 +391,7 @@ const BoardDetailPage = () => {
 
     if (error) {
         return (
-            <div className={styles.container}> {/* Note: .container not defined in this module, might be from global css or needs definition */}
+            <div className={styles.container}>
                 <p className={styles.error}>{error}</p>
                 <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
@@ -376,7 +400,7 @@ const BoardDetailPage = () => {
 
     if (!board) {
         return (
-            <div className={styles.container}> {/* Note: .container not defined in this module, might be from global css or needs definition */}
+            <div className={styles.container}>
                 <p className={styles.message}>Board not found.</p>
                 <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
@@ -479,6 +503,7 @@ const BoardDetailPage = () => {
                     onClose={handleCloseModal}
                     onSave={handleSaveCardDetails}
                     boardMembers={board.members}
+                    currentUser={user} // <--- Pass current user to modal
                 />
             )}
         </div>

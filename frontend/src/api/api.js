@@ -30,6 +30,10 @@ export const fetchCards = (listId) => API.get(`/lists/${listId}/cards`);
 export const createCard = (listId, newCard) => API.post(`/lists/${listId}/cards`, newCard);
 export const updateCard = (cardId, updatedCard) => API.put(`/cards/${cardId}`, updatedCard);
 export const deleteCard = (cardId) => API.delete(`/cards/${cardId}`);
-export const moveCard = (cardId, targetListId, newOrderIndex) => API.put(`/cards/${cardId}/move`, { targetListId, newOrderIndex }); // <--- Add this
+export const moveCard = (cardId, targetListId, newOrderIndex) => API.put(`/cards/${cardId}/move`, { targetListId, newOrderIndex });
+
+// Comment API functions
+export const fetchComments = (cardId) => API.get(`/cards/${cardId}/comments`);
+export const addComment = (cardId, commentText) => API.post(`/cards/${cardId}/comments`, { text: commentText });
 
 export default API;
