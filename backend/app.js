@@ -4,6 +4,7 @@ const authRoutes = require('./routes/authRoutes'); // Import auth routes
 const boardRoutes = require('./routes/boardRoutes');
 const listRoutes = require('./routes/listRoutes');
 const cardRoutes = require('./routes/cardRoutes');
+const commentRoutes = require('./routes/commentRoutes'); // <--- IMPORT Comment Routes
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/boards', boardRoutes);
 app.use('/api', listRoutes);
 app.use('/api', cardRoutes);
+app.use('/api', commentRoutes); // <--- COMMENT ROUTE
 
 // Basic route for testing server
 app.get('/', (req, res) => {
