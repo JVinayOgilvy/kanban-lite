@@ -1,29 +1,18 @@
 const List = require('../models/List');
-const Board = require('../models/Board'); // Needed for authorization checks
+const Board = require('../models/Board');
+const { getUserBoardRole, hasRequiredRole } = require('./boardController'); // <--- NEW IMPORT
 
-// Helper function to check if user is a member of the board
+// Helper function to check if user is a member of the board (now using role-based check)
 const checkBoardMembership = async (boardId, userId) => {
     const board = await Board.findById(boardId);
     if (!board) {
         return { status: 404, message: 'Board not found' };
     }
-    const isMember = board.members.some(member => member.equals(userId));
-    if (!isMember) {
+    const userRole = getUserBoardRole(board, userId);
+    if (!userRole) { // If user is not a member at all
         return { status: 403, message: 'Not authorized to access this board' };
     }
-    return { status: 200, board };
-};
-
-// Helper function to check if user is the owner of the board
-const checkBoardOwnership = async (boardId, userId) => {
-    const board = await Board.findById(boardId);
-    if (!board) {
-        return { status: 404, message: 'Board not found' };
-    }
-    if (!board.owner.equals(userId)) {
-        return { status: 403, message: 'Not authorized to perform this action on this board' };
-    }
-    return { status: 200, board };
+    return { status: 200, board, userRole }; // Return userRole for further checks
 };
 
 // @desc    Get all lists for a specific board
@@ -38,7 +27,7 @@ const getLists = async (req, res) => {
     }
 
     try {
-        const lists = await List.find({ board: boardId }).sort('order'); // Sort by order for display
+        const lists = await List.find({ board: boardId }).sort('order');
         res.status(200).json(lists);
     } catch (error) {
         console.error(error);
@@ -74,7 +63,7 @@ const getListById = async (req, res) => {
 
 // @desc    Create a new list for a board
 // @route   POST /api/boards/:boardId/lists
-// @access  Private (Board Owner Only for now)
+// @access  Private (Board Admin or Owner)
 const createList = async (req, res) => {
     const { boardId } = req.params;
     const { title } = req.body;
@@ -83,14 +72,16 @@ const createList = async (req, res) => {
         return res.status(400).json({ message: 'Please add a title for the list' });
     }
 
-    // Only board owner can create lists for now
-    const authCheck = await checkBoardOwnership(boardId, req.user._id);
+    // Authorization: Only board admin or owner can create lists
+    const authCheck = await checkBoardMembership(boardId, req.user._id);
     if (authCheck.status !== 200) {
         return res.status(authCheck.status).json({ message: authCheck.message });
     }
+    if (!hasRequiredRole(authCheck.userRole, 'admin')) { // 'admin' role or higher
+        return res.status(403).json({ message: 'Not authorized to create lists on this board' });
+    }
 
     try {
-        // Find the highest order value for lists in this board to set the new list's order
         const highestOrderList = await List.findOne({ board: boardId }).sort('-order');
         const newOrder = highestOrderList ? highestOrderList.order + 1 : 0;
 
@@ -110,7 +101,7 @@ const createList = async (req, res) => {
 
 // @desc    Update a list (title or order)
 // @route   PUT /api/lists/:id
-// @access  Private (Board Owner Only for now)
+// @access  Private (Board Admin or Owner)
 const updateList = async (req, res) => {
     const { title, order } = req.body;
 
@@ -121,10 +112,13 @@ const updateList = async (req, res) => {
             return res.status(404).json({ message: 'List not found' });
         }
 
-        // Only board owner can update lists for now
-        const authCheck = await checkBoardOwnership(list.board, req.user._id);
+        // Authorization: Only board admin or owner can update lists
+        const authCheck = await checkBoardMembership(list.board, req.user._id);
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
+        }
+        if (!hasRequiredRole(authCheck.userRole, 'admin')) { // 'admin' role or higher
+            return res.status(403).json({ message: 'Not authorized to update lists on this board' });
         }
 
         list.title = title !== undefined ? title : list.title;
@@ -143,7 +137,7 @@ const updateList = async (req, res) => {
 
 // @desc    Delete a list
 // @route   DELETE /api/lists/:id
-// @access  Private (Board Owner Only for now)
+// @access  Private (Board Admin or Owner)
 const deleteList = async (req, res) => {
     try {
         const list = await List.findById(req.params.id);
@@ -152,13 +146,16 @@ const deleteList = async (req, res) => {
             return res.status(404).json({ message: 'List not found' });
         }
 
-        // Only board owner can delete lists for now
-        const authCheck = await checkBoardOwnership(list.board, req.user._id);
+        // Authorization: Only board admin or owner can delete lists
+        const authCheck = await checkBoardMembership(list.board, req.user._id);
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
         }
+        if (!hasRequiredRole(authCheck.userRole, 'admin')) { // 'admin' role or higher
+            return res.status(403).json({ message: 'Not authorized to delete lists on this board' });
+        }
 
-        await list.deleteOne(); // Mongoose 6+ uses deleteOne() or deleteMany()
+        await list.deleteOne();
 
         res.status(200).json({ message: 'List removed' });
     } catch (error) {

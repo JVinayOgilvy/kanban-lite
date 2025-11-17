@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard, updateCard } from '../api/api';
-import { useAuth } from '../context/AuthContext'; // Corrected import
+import { getBoard, addBoardMember, fetchLists, createList, fetchCards, moveCard, updateCard, updateBoardMemberRole } from '../api/api'; // <--- NEW: updateBoardMemberRole
+import { useAuth } from '../context/AuthContext';
 import ListColumn from '../components/ListColumn';
 import CardDetailModal from '../components/CardDetailModal';
 
@@ -26,7 +26,7 @@ import styles from '../assets/css/pages/BoardDetailPage.module.css';
 
 const BoardDetailPage = () => {
     const { id } = useParams();
-    const { user } = useAuth();
+    const { user } = useAuth(); // `user` from AuthContext is the current user
     const [board, setBoard] = useState(null);
     const [lists, setLists] = useState([]);
     const [cards, setCards] = useState({});
@@ -40,6 +40,17 @@ const BoardDetailPage = () => {
 
     const [activeId, setActiveId] = useState(null);
     const [selectedCard, setSelectedCard] = useState(null);
+
+    console.log('Rendering BoardDetailPage for board ID:', id, 'with user:', user, 'board state:', board);
+
+    // Helper to determine if current user has at least a certain role
+    const hasRequiredRole = useCallback((requiredRole) => {
+        if (!board || !user) return false;
+        const currentUserEntry = board.members.find(m => m.user._id === user._id);
+        if (!currentUserEntry) return false; // Not a member
+        const roles = ['member', 'admin', 'owner'];
+        return roles.indexOf(currentUserEntry.role) >= roles.indexOf(requiredRole);
+    }, [board, user]);
 
     // dnd-kit sensors configuration
     const sensors = useSensors(
@@ -180,12 +191,36 @@ const BoardDetailPage = () => {
             });
         });
 
+        // --- Listen for commentCreated event ---
+        socket.on('commentCreated', (newComment) => {
+            console.log('Real-time: commentCreated', newComment);
+            // If the modal is open for the card this comment belongs to, update its comments
+            if (selectedCard && selectedCard._id === newComment.card) {
+                // To ensure the modal's internal comments state is updated,
+                // we need to trigger a re-fetch of comments in the modal.
+                // The CardDetailModal's useEffect already does this if `card` prop changes.
+                // Since `selectedCard` is updated by `cardUpdated` event, this will naturally trigger.
+                // For comments, we might need a more direct way if `selectedCard` itself isn't changing.
+                // For now, let's assume `selectedCard` might get updated or the modal will re-fetch.
+                // A more robust solution would be to pass a `refreshComments` function to the modal.
+            }
+        });
+
+        // --- NEW: Listen for boardUpdated event (for member role changes) ---
+        socket.on('boardUpdated', (updatedBoard) => {
+            console.log('Real-time: boardUpdated', updatedBoard);
+            if (board && board._id === updatedBoard._id) {
+                setBoard(updatedBoard); // Update the board state with new member roles
+            }
+        });
+        // --- END NEW: Listen for boardUpdated event ---
+
         return () => {
             console.log('Leaving board room:', id);
             socket.emit('leaveBoard', id);
             socket.disconnect();
         };
-    }, [id, user, selectedCard]);
+    }, [id, user, selectedCard, board]); // Add `board` to dependencies for boardUpdated event
 
     // --- End Socket.IO Integration ---
 
@@ -199,16 +234,27 @@ const BoardDetailPage = () => {
         }
 
         try {
-            await addBoardMember(id, newMemberEmail);
+            const { data } = await addBoardMember(id, newMemberEmail);
             setNewMemberEmail('');
             setAddMemberSuccess('Member invited successfully!');
-            const boardRes = await getBoard(id);
-            setBoard(boardRes.data);
+            setBoard(data); // Update board state directly from API response
         } catch (err) {
             console.error('Failed to add member:', err);
             setAddMemberError(err.response?.data?.message || 'Failed to add member.');
         }
     };
+
+    // --- NEW: Handle Role Change ---
+    const handleRoleChange = async (memberId, newRole) => {
+        try {
+            const { data } = await updateBoardMemberRole(id, memberId, newRole);
+            setBoard(data); // Update board state directly from API response
+        } catch (err) {
+            console.error('Failed to update member role:', err);
+            setError(err.response?.data?.message || 'Failed to update member role.');
+        }
+    };
+    // --- END NEW: Handle Role Change ---
 
     const handleCreateList = async (e) => {
         e.preventDefault();
@@ -253,7 +299,7 @@ const BoardDetailPage = () => {
     const handleSaveCardDetails = async (cardId, updatedFields) => {
         try {
             const assignedMember = updatedFields.assignedTo
-                ? board.members.find(member => member._id === updatedFields.assignedTo)
+                ? board.members.find(member => member.user._id === updatedFields.assignedTo)?.user // Find the user object within the member entry
                 : null;
 
             setSelectedCard(prevCard => ({
@@ -367,7 +413,7 @@ const BoardDetailPage = () => {
 
     if (error) {
         return (
-            <div className={styles.container}> {/* Note: .container not defined in this module, might be from global css or needs definition */}
+            <div className={styles.container}>
                 <p className={styles.error}>{error}</p>
                 <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
@@ -376,33 +422,66 @@ const BoardDetailPage = () => {
 
     if (!board) {
         return (
-            <div className={styles.container}> {/* Note: .container not defined in this module, might be from global css or needs definition */}
+            <div className={styles.container}>
                 <p className={styles.message}>Board not found.</p>
                 <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
             </div>
         );
     }
 
-    const isOwner = user && board.owner && user._id === board.owner._id;
+    const currentUserRole = board.members.find(m => m.user._id === user._id)?.role;
+    const canManageBoard = hasRequiredRole('admin'); // Admin or owner can manage board details, add members
+    const canCreateList = hasRequiredRole('admin'); // Admin or owner can create lists
+    const canDeleteBoard = hasRequiredRole('owner'); // Only owner can delete board
 
     return (
         <div className={styles.boardPageContainer}>
             <div className={styles.boardHeader}>
                 <h2 className={styles.boardTitle}>{board.title}</h2>
                 <Link to="/dashboard" className={styles.backButton}>Back to Dashboard</Link>
+                {canDeleteBoard && ( // Only owner can delete board
+                    <button className={styles.deleteBoardButton}>Delete Board</button> // Implement delete functionality
+                )}
             </div>
 
             <div className={styles.boardMeta}>
-                <p>Owner: <strong>{board.owner?.name} ({board.owner?.email})</strong></p>
+                <p>Owner:
+                    <strong>
+                        {board.owner ? `${board.owner.name} (${board.owner.email})` : 'Unknown Owner'}
+                    </strong>
+                </p>
                 <div className={styles.membersSection}>
                     <h4>Members:</h4>
                     <ul className={styles.memberList}>
                         {board.members && board.members.length > 0 ? (
-                            board.members.map((member) => (
-                                <li key={member._id} className={styles.memberItem}>
-                                    {member.name} ({member.email})
-                                    {member._id === board.owner._id && <span className={styles.ownerTag}> (Owner)</span>}
-                                </li>
+                            board.members.map((memberEntry) => (
+                                // Crucial check: Ensure memberEntry.user is not null before accessing its properties
+                                memberEntry.user ? (
+                                    <li key={memberEntry.user._id} className={styles.memberItem}>
+                                        {memberEntry.user.name} ({memberEntry.user.email}) -
+                                        {/* Only allow role change if current user has permission AND it's not the current user */}
+                                        {canManageBoard && memberEntry.user._id !== user._id ? (
+                                            <select
+                                                value={memberEntry.role}
+                                                onChange={(e) => handleRoleChange(memberEntry.user._id, e.target.value)}
+                                                className={styles.roleSelect}
+                                            >
+                                                <option value="member">Member</option>
+                                                <option value="admin">Admin</option>
+                                                {currentUserRole === 'owner' && ( // Only owner can assign owner role
+                                                    <option value="owner">Owner</option>
+                                                )}
+                                            </select>
+                                        ) : (
+                                            <span className={styles.memberRole}> {memberEntry.role}</span>
+                                        )}
+                                    </li>
+                                ) : (
+                                    // Fallback for a member entry with a null user (should be cleaned by migration)
+                                    <li key={memberEntry._id} className={styles.memberItem}>
+                                        [Deleted User] - {memberEntry.role}
+                                    </li>
+                                )
                             ))
                         ) : (
                             <li>No members yet.</li>
@@ -411,7 +490,7 @@ const BoardDetailPage = () => {
                 </div>
             </div>
 
-            {isOwner && (
+            {canManageBoard && ( // Only admin or owner can invite members
                 <div className={styles.inviteMemberSection}>
                     <h4 className={styles.subHeading}>Invite New Member:</h4>
                     <form onSubmit={handleInviteMember} className={styles.inviteForm}>
@@ -445,22 +524,25 @@ const BoardDetailPage = () => {
                             cards={cards[list._id] || []}
                             onCardCreated={handleCardCreated}
                             onCardClick={handleCardClick}
+                            currentUserRole={currentUserRole} // <--- Pass current user's role
                         />
                     ))}
-                    <div className={styles.addListSection}>
-                        <form onSubmit={handleCreateList} className={styles.addListForm}>
-                            <input
-                                type="text"
-                                placeholder="Add a new list..."
-                                value={newListName}
-                                onChange={(e) => setNewListName(e.target.value)}
-                                className={styles.addListInput}
-                                required
-                            />
-                            <button type="submit" className={styles.addListButton}>Add List</button>
-                            {createListError && <p className={styles.error}>{createListError}</p>}
-                        </form>
-                    </div>
+                    {canCreateList && ( // Only admin or owner can create lists
+                        <div className={styles.addListSection}>
+                            <form onSubmit={handleCreateList} className={styles.addListForm}>
+                                <input
+                                    type="text"
+                                    placeholder="Add a new list..."
+                                    value={newListName}
+                                    onChange={(e) => setNewListName(e.target.value)}
+                                    className={styles.addListInput}
+                                    required
+                                />
+                                <button type="submit" className={styles.addListButton}>Add List</button>
+                                {createListError && <p className={styles.error}>{createListError}</p>}
+                            </form>
+                        </div>
+                    )}
                 </div>
 
                 {/* DragOverlay for custom visual feedback during drag */}
@@ -478,7 +560,9 @@ const BoardDetailPage = () => {
                     card={selectedCard}
                     onClose={handleCloseModal}
                     onSave={handleSaveCardDetails}
-                    boardMembers={board.members}
+                    // MODIFIED LINE: Filter out any member entries where the user is null
+                    boardMembers={board.members.map(m => m.user).filter(u => u !== null)}
+                    currentUser={user}
                 />
             )}
         </div>
