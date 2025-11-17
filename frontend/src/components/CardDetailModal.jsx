@@ -97,9 +97,12 @@ const CardDetailModal = ({ card, onClose, onSave, boardMembers = [], currentUser
                             >
                                 <option value="">Unassigned</option>
                                 {boardMembers.map(member => (
-                                    <option key={member._id} value={member._id}>
-                                        {member.name} ({member.email})
-                                    </option>
+                                    // ADDED CHECK: Ensure member and member._id exist
+                                    member && member._id ? (
+                                        <option key={member._id} value={member._id}>
+                                            {member.name} ({member.email})
+                                        </option>
+                                    ) : null // Don't render option if member is null or invalid
                                 ))}
                             </select>
                         </div>

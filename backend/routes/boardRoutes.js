@@ -6,6 +6,7 @@ const {
     updateBoard,
     deleteBoard,
     addBoardMember,
+    updateMemberRole, // <--- IMPORT member role update controller
 } = require('../controllers/boardController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -23,5 +24,8 @@ router.route('/:id')
 
 router.route('/:id/members')
     .put(protect, addBoardMember); // Route to add a member to a board
+
+router.route('/:id/members/:userId/role') // <--- ROUTE for updating member role
+    .put(protect, updateMemberRole);
 
 module.exports = router;

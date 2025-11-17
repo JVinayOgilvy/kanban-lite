@@ -203,3 +203,40 @@
     /* Add hover style */
     background-color: #4a9a34;
 }
+
+.memberRole {
+    text-transform: capitalize;
+    /* Make roles look nicer */
+    margin-left: 5px;
+}
+
+.roleSelect {
+    margin-left: 5px;
+    padding: 3px 5px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 0.9em;
+}
+
+.roleSelect option {
+    background-color: #0079bf;
+    /* Match board background */
+    color: white;
+}
+
+.deleteBoardButton {
+    background-color: #dc3545;
+    color: white;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.deleteBoardButton:hover {
+    background-color: #c82333;
+}

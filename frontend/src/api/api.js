@@ -1,3 +1,4 @@
+// frontend/src/api/api.js
 import axios from 'axios';
 
 const API = axios.create({
@@ -18,6 +19,7 @@ export const getBoard = (id) => API.get(`/boards/${id}`);
 export const updateBoard = (id, updatedBoard) => API.put(`/boards/${id}`, updatedBoard);
 export const deleteBoard = (id) => API.delete(`/boards/${id}`);
 export const addBoardMember = (id, memberEmail) => API.put(`/boards/${id}/members`, { email: memberEmail });
+export const updateBoardMemberRole = (boardId, userId, role) => API.put(`/boards/${boardId}/members/${userId}/role`, { role }); // <--- NEW
 
 // List API functions
 export const fetchLists = (boardId) => API.get(`/boards/${boardId}/lists`);

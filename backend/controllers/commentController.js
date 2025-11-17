@@ -1,19 +1,20 @@
 const Comment = require('../models/Comment');
 const Card = require('../models/Card');
-const Board = require('../models/Board'); // For authorization
-const User = require('../models/User'); // For populating author details
+const Board = require('../models/Board');
+const User = require('../models/User');
+const { getUserBoardRole, hasRequiredRole } = require('./boardController'); // <--- NEW IMPORT
 
-// Helper function to check if user is a member of the board
+// Helper function to check if user is a member of the board (now using role-based check)
 const checkBoardMembership = async (boardId, userId) => {
     const board = await Board.findById(boardId);
     if (!board) {
         return { status: 404, message: 'Board not found' };
     }
-    const isMember = board.members.some(member => member.equals(userId));
-    if (!isMember) {
+    const userRole = getUserBoardRole(board, userId);
+    if (!userRole) { // If user is not a member at all
         return { status: 403, message: 'Not authorized to access this board' };
     }
-    return { status: 200, board };
+    return { status: 200, board, userRole }; // Return userRole for further checks
 };
 
 // Helper to emit Socket.IO events from request context
@@ -37,8 +38,8 @@ const getComments = async (req, res) => {
         }
 
         const comments = await Comment.find({ card: cardId })
-            .populate('author', 'name email') // Populate author details
-            .sort('createdAt'); // Sort by creation time
+            .populate('author', 'name email')
+            .sort('createdAt');
 
         res.status(200).json(comments);
     } catch (error) {
@@ -71,6 +72,10 @@ const addComment = async (req, res) => {
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
         }
+        // Authorization: Any member can add comments
+        // if (!hasRequiredRole(authCheck.userRole, 'member')) { // 'member' role or higher
+        //     return res.status(403).json({ message: 'Not authorized to add comments on this board' });
+        // }
 
         const comment = new Comment({
             text,

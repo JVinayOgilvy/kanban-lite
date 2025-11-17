@@ -13,24 +13,40 @@ const boardSchema = mongoose.Schema(
             ref: 'User', // References the User model
             required: true,
         },
-        members: [ // Array of User IDs who are members of this board
+        members: [ // Array of objects, each containing a user and their role
             {
-                type: mongoose.Schema.Types.ObjectId,
-                ref: 'User',
+                user: { // Changed from just 'type: mongoose.Schema.Types.ObjectId'
+                    type: mongoose.Schema.Types.ObjectId,
+                    ref: 'User',
+                    required: true,
+                },
+                role: {
+                    type: String,
+                    enum: ['owner', 'admin', 'member'], // Define possible roles
+                    default: 'member',
+                },
             },
         ],
-        // We will embed Lists and Cards later, or reference them.
-        // For now, let's keep it simple.
     },
     {
         timestamps: true, // Adds createdAt and updatedAt fields
     }
 );
 
-// Pre-save hook to ensure the owner is always a member
+// Pre-save hook to ensure the owner is always a member with 'owner' role
 boardSchema.pre('save', function (next) {
-    if (this.isNew && !this.members.includes(this.owner)) {
-        this.members.push(this.owner);
+    // Check if the owner is already in the members array
+    const ownerExists = this.members.some(member => member.user.equals(this.owner));
+
+    if (!ownerExists) {
+        // If owner is not a member, add them with the 'owner' role
+        this.members.push({ user: this.owner, role: 'owner' });
+    } else {
+        // If owner is already a member, ensure their role is 'owner'
+        const ownerMember = this.members.find(member => member.user.equals(this.owner));
+        if (ownerMember && ownerMember.role !== 'owner') {
+            ownerMember.role = 'owner';
+        }
     }
     next();
 });
