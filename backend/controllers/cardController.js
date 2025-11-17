@@ -2,18 +2,19 @@ const Card = require('../models/Card');
 const List = require('../models/List');
 const Board = require('../models/Board');
 const User = require('../models/User');
+const { getUserBoardRole, hasRequiredRole } = require('./boardController'); // <--- NEW IMPORT
 
-// Helper function to check if user is a member of the board
+// Helper function to check if user is a member of the board (now using role-based check)
 const checkBoardMembership = async (boardId, userId) => {
     const board = await Board.findById(boardId);
     if (!board) {
         return { status: 404, message: 'Board not found' };
     }
-    const isMember = board.members.some(member => member.equals(userId));
-    if (!isMember) {
+    const userRole = getUserBoardRole(board, userId);
+    if (!userRole) { // If user is not a member at all
         return { status: 403, message: 'Not authorized to access this board' };
     }
-    return { status: 200, board };
+    return { status: 200, board, userRole }; // Return userRole for further checks
 };
 
 // Helper to emit Socket.IO events from request context
@@ -37,8 +38,8 @@ const getCards = async (req, res) => {
         }
 
         const cards = await Card.find({ list: listId })
-            .populate('assignedTo', 'name email') // Populate assigned user details
-            .sort('order'); // Sort by order for display
+            .populate('assignedTo', 'name email')
+            .sort('order');
         res.status(200).json(cards);
     } catch (error) {
         console.error(error);
@@ -94,8 +95,11 @@ const createCard = async (req, res) => {
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
         }
+        // Authorization: Any member can create cards
+        // if (!hasRequiredRole(authCheck.userRole, 'member')) { // 'member' role or higher
+        //     return res.status(403).json({ message: 'Not authorized to create cards on this board' });
+        // }
 
-        // Find the highest order value for cards in this list to set the new card's order
         const highestOrderCard = await Card.findOne({ list: listId }).sort('-order');
         const newOrder = highestOrderCard ? highestOrderCard.order + 1 : 0;
 
@@ -115,7 +119,6 @@ const createCard = async (req, res) => {
 
         res.status(201).json(populatedCard);
 
-        // --- Emit real-time event ---
         emitBoardUpdate(req, list.board, 'cardCreated', populatedCard);
 
     } catch (error) {
@@ -141,6 +144,10 @@ const updateCard = async (req, res) => {
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
         }
+        // Authorization: Any member can update cards
+        // if (!hasRequiredRole(authCheck.userRole, 'member')) { // 'member' role or higher
+        //     return res.status(403).json({ message: 'Not authorized to update cards on this board' });
+        // }
 
         card.title = title !== undefined ? title : card.title;
         card.description = description !== undefined ? description : card.description;
@@ -153,7 +160,6 @@ const updateCard = async (req, res) => {
 
         res.status(200).json(populatedCard);
 
-        // --- Emit real-time event ---
         emitBoardUpdate(req, card.board, 'cardUpdated', populatedCard);
 
     } catch (error) {
@@ -167,7 +173,7 @@ const updateCard = async (req, res) => {
 
 // @desc    Delete a card
 // @route   DELETE /api/cards/:id
-// @access  Private (Board Members Only)
+// @access  Private (Board Admin or Owner)
 const deleteCard = async (req, res) => {
     try {
         const card = await Card.findById(req.params.id);
@@ -180,8 +186,11 @@ const deleteCard = async (req, res) => {
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
         }
+        // Authorization: Only board admin or owner can delete cards
+        if (!hasRequiredRole(authCheck.userRole, 'admin')) { // 'admin' role or higher
+            return res.status(403).json({ message: 'Not authorized to delete cards on this board' });
+        }
 
-        // Store old list ID for Socket.IO event
         const oldListId = card.list.toString();
         const boardId = card.board.toString();
 
@@ -189,14 +198,12 @@ const deleteCard = async (req, res) => {
 
         res.status(200).json({ message: 'Card removed' });
 
-        // --- Emit real-time event ---
         emitBoardUpdate(req, boardId, 'cardDeleted', {
             _id: card._id,
-            list: oldListId, // Send the list it was removed from
+            list: oldListId,
             board: boardId,
         });
 
-        // After deleting, re-index the remaining cards in the list
         const remainingCards = await Card.find({ list: oldListId }).sort('order');
         const bulkOps = remainingCards.map((c, index) => ({
             updateOne: {
@@ -206,7 +213,6 @@ const deleteCard = async (req, res) => {
         }));
         if (bulkOps.length > 0) {
             await Card.bulkWrite(bulkOps);
-            // Optionally emit a list reordered event if needed
             emitBoardUpdate(req, boardId, 'listReordered', { listId: oldListId, cards: remainingCards.map((c, index) => ({ _id: c._id, order: index })) });
         }
 
@@ -224,54 +230,53 @@ const deleteCard = async (req, res) => {
 // @access  Private (Board Members Only)
 const moveCard = async (req, res) => {
     const { id: cardId } = req.params;
-    const { targetListId, newOrderIndex } = req.body; // newOrderIndex is the 0-based index in the target list
+    const { targetListId, newOrderIndex } = req.body;
 
-    console.log('moveCard received:', { cardId, targetListId, newOrderIndex }); // Debug log
+    console.log('moveCard received:', { cardId, targetListId, newOrderIndex });
 
     if (!targetListId || newOrderIndex === undefined || newOrderIndex < 0) {
-        console.error('Validation failed: Missing targetListId or invalid newOrderIndex', { targetListId, newOrderIndex }); // Debug log
+        console.error('Validation failed: Missing targetListId or invalid newOrderIndex', { targetListId, newOrderIndex });
         return res.status(400).json({ message: 'Missing targetListId or invalid newOrderIndex' });
     }
 
     try {
         const cardToMove = await Card.findById(cardId);
-        console.log('cardToMove found:', cardToMove ? cardToMove._id : 'null'); // Debug log
+        console.log('cardToMove found:', cardToMove ? cardToMove._id : 'null');
         if (!cardToMove) {
             return res.status(404).json({ message: 'Card not found' });
         }
 
         const oldListId = cardToMove.list.toString();
         const boardId = cardToMove.board.toString();
-        console.log('oldListId:', oldListId, 'boardId:', boardId); // Debug log
+        console.log('oldListId:', oldListId, 'boardId:', boardId);
 
-        // Authorization check for the board the card belongs to
         const authCheck = await checkBoardMembership(boardId, req.user._id);
-        console.log('authCheck status:', authCheck.status, 'message:', authCheck.message); // Debug log
+        console.log('authCheck status:', authCheck.status, 'message:', authCheck.message);
         if (authCheck.status !== 200) {
             return res.status(authCheck.status).json({ message: authCheck.message });
         }
+        // Authorization: Any member can move cards
+        // if (!hasRequiredRole(authCheck.userRole, 'member')) { // 'member' role or higher
+        //     return res.status(403).json({ message: 'Not authorized to move cards on this board' });
+        // }
 
-        // Check if targetListId is valid and belongs to the same board
         const targetList = await List.findById(targetListId);
-        console.log('targetList found:', targetList ? targetList._id : 'null'); // Debug log
+        console.log('targetList found:', targetList ? targetList._id : 'null');
         if (!targetList) {
             return res.status(404).json({ message: 'Target list not found' });
         }
         if (targetList.board.toString() !== boardId) {
-            console.error('Attempted to move card to a list on a different board.'); // Debug log
+            console.error('Attempted to move card to a list on a different board.');
             return res.status(400).json({ message: 'Cannot move card to a list on a different board' });
         }
 
-        // --- Re-indexing Logic ---
         const bulkOperations = [];
 
         if (oldListId === targetListId) {
-            // Moving within the same list
-            console.log('Moving within the same list:', oldListId); // Debug log
+            console.log('Moving within the same list:', oldListId);
             const cardsInList = await Card.find({ list: oldListId, _id: { $ne: cardId } })
                 .sort('order');
 
-            // Temporarily insert the card to re-calculate orders
             cardsInList.splice(newOrderIndex, 0, cardToMove);
 
             cardsInList.forEach((card, index) => {
@@ -284,12 +289,10 @@ const moveCard = async (req, res) => {
                     });
                 }
             });
-            cardToMove.order = newOrderIndex; // Update the moved card's order
+            cardToMove.order = newOrderIndex;
         } else {
-            // Moving between different lists
-            console.log('Moving between different lists. From:', oldListId, 'To:', targetListId); // Debug log
+            console.log('Moving between different lists. From:', oldListId, 'To:', targetListId);
 
-            // 1. Re-index the old list (remove the moved card)
             const oldListCards = await Card.find({ list: oldListId, _id: { $ne: cardId } })
                 .sort('order');
             oldListCards.forEach((card, index) => {
@@ -303,10 +306,9 @@ const moveCard = async (req, res) => {
                 }
             });
 
-            // 2. Re-index the new list (add the moved card)
             const targetListCards = await Card.find({ list: targetListId })
                 .sort('order');
-            targetListCards.splice(newOrderIndex, 0, cardToMove); // Temporarily insert the card
+            targetListCards.splice(newOrderIndex, 0, cardToMove);
 
             targetListCards.forEach((card, index) => {
                 if (card.order !== index) {
@@ -319,32 +321,27 @@ const moveCard = async (req, res) => {
                 }
             });
 
-            // Update the moved card's list and order
             cardToMove.list = targetListId;
             cardToMove.order = newOrderIndex;
         }
 
-        // Save the moved card's updated list and order
         await cardToMove.save();
-        console.log('Moved card saved:', cardToMove._id, 'new list:', cardToMove.list, 'new order:', cardToMove.order); // Debug log
+        console.log('Moved card saved:', cardToMove._id, 'new list:', cardToMove.list, 'new order:', cardToMove.order);
 
-        // Execute bulk operations for re-indexing other cards
         if (bulkOperations.length > 0) {
             await Card.bulkWrite(bulkOperations);
-            console.log('Bulk write operations executed:', bulkOperations.length); // Debug log
+            console.log('Bulk write operations executed:', bulkOperations.length);
         }
 
-        // Fetch the updated card with populated assignedTo for the response
         const updatedCard = await Card.findById(cardId).populate('assignedTo', 'name email');
 
         res.status(200).json({
             message: 'Card moved successfully',
             card: updatedCard,
-            oldListId: oldListId, // Send old list ID for frontend to update
-            newListId: targetListId, // Send new list ID for frontend to update
+            oldListId: oldListId,
+            newListId: targetListId,
         });
 
-        // --- Emit real-time event ---
         emitBoardUpdate(req, boardId, 'cardMoved', {
             card: updatedCard,
             oldListId: oldListId,
@@ -352,7 +349,7 @@ const moveCard = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Caught error in moveCard:', error); // Debug log: This will show the actual error
+        console.error('Caught error in moveCard:', error);
         if (error.kind === 'ObjectId') {
             return res.status(400).json({ message: 'Invalid ID format' });
         }
